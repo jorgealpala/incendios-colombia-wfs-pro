@@ -1,0 +1,974 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Incendios Forestales · Colombia</title>
+<meta name="description" content="Visor de incendios forestales en Colombia (OroraTech WildFire Solution) — UNGRD.">
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+
+<style>
+:root{
+  --azul:#1f3b57; --rojo:#c0392b; --tinta:#2c3e50; --gris:#5b6878;
+  --linea:#e3e8ee; --fondo:#f4f6f8; --panel:#ffffff; --suave:#f8fafc;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{font-family:'Public Sans',system-ui,Segoe UI,Roboto,Arial,sans-serif;
+  color:var(--tinta);background:var(--fondo);font-size:14px;line-height:1.4}
+a{color:var(--azul)}
+h1,h2,h3{margin:0}
+.oculto{display:none !important}
+
+/* ---------- Encabezado ---------- */
+header{display:flex;align-items:center;gap:14px;padding:12px 20px;background:var(--panel);
+  border-bottom:1px solid var(--linea);position:sticky;top:0;z-index:1200}
+header img{height:46px}
+.htit{font-size:19px;font-weight:700;color:var(--tinta);line-height:1.1}
+.hsub{font-size:12px;color:var(--gris)}
+.embed header{display:none}
+
+/* ---------- Layout ---------- */
+.wrap{display:grid;grid-template-columns:300px 1fr;gap:0;align-items:start}
+@media(max-width:880px){.wrap{grid-template-columns:1fr}}
+
+aside{background:var(--panel);border-right:1px solid var(--linea);padding:16px;
+  position:sticky;top:71px;height:calc(100vh - 71px);overflow-y:auto}
+@media(max-width:880px){aside{position:static;height:auto;border-right:none;
+  border-bottom:1px solid var(--linea)}}
+aside h3{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--gris);
+  margin:18px 0 8px;font-weight:700}
+aside h3:first-child{margin-top:0}
+.ctl{margin-bottom:10px}
+.ctl label{display:block;font-size:12px;color:var(--gris);margin-bottom:3px}
+select,input[type=date]{width:100%;padding:7px 8px;border:1px solid var(--linea);
+  border-radius:7px;font:inherit;background:#fff;color:var(--tinta)}
+.radio-row{display:flex;flex-direction:column;gap:4px}
+.radio-row label,.chk{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--tinta);cursor:pointer}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:5px 9px;border:1px solid var(--linea);
+  border-radius:999px;font-size:12px;cursor:pointer;user-select:none;background:#fff;color:var(--gris)}
+.chip input{display:none}
+.chip .dot{width:11px;height:11px;border-radius:50%}
+.chip.on{border-color:var(--azul);background:#eef3f8;color:var(--tinta);font-weight:600}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;width:100%;
+  padding:8px 10px;border:1px solid var(--azul);background:var(--azul);color:#fff;
+  border-radius:8px;font:inherit;font-weight:600;cursor:pointer}
+.btn.sec{background:#fff;color:var(--azul)}
+.btn:disabled{opacity:.5;cursor:default}
+.mini{font-size:11px;color:var(--gris);margin-top:4px}
+
+/* ---------- Contenido ---------- */
+main{padding:18px 22px;min-width:0}
+.titulo-zona{font-size:17px;font-weight:700;margin:2px 0 12px}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+@media(max-width:620px){.kpis{grid-template-columns:repeat(2,1fr)}}
+.kpi{background:var(--panel);border:1px solid var(--linea);border-radius:10px;padding:12px 14px}
+.kpi .k{font-size:12px;color:var(--gris)}
+.kpi .v{font-size:23px;font-weight:700;color:var(--tinta);margin-top:2px}
+
+.seg{display:inline-flex;border:1px solid var(--linea);border-radius:8px;overflow:hidden;background:#fff}
+.seg button{border:0;background:#fff;padding:6px 12px;font:inherit;cursor:pointer;color:var(--gris)}
+.seg button[aria-pressed=true]{background:var(--azul);color:#fff;font-weight:600}
+.barra-mapa{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:8px}
+
+#mapa{height:600px;width:100%;border:1px solid var(--linea);border-radius:10px}
+.leaflet-container{font-family:inherit}
+.explica{font-size:12.5px;color:var(--gris);margin:8px 0 2px}
+.leyenda{font-size:12.5px;color:#444;margin:6px 0 0}
+.leyenda .it{display:inline-flex;align-items:center;margin-right:14px;margin-bottom:4px}
+.leyenda .sw{width:16px;height:16px;border:1px solid #ccc;border-radius:3px;margin-right:5px}
+
+.seccion-tit{font-size:16px;font-weight:700;margin:22px 0 10px;display:flex;align-items:center;gap:8px}
+.divisor{border:0;border-top:1px solid var(--linea);margin:20px 0}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+@media(max-width:820px){.grid2,.grid3{grid-template-columns:1fr}}
+.card{background:var(--panel);border:1px solid var(--linea);border-radius:10px;padding:12px 14px}
+.card h4{font-size:13px;font-weight:600;margin:0 0 8px;color:var(--tinta)}
+.chart-box{position:relative;height:280px}
+.chart-box.alta{height:320px}
+.cap{font-size:11.5px;color:var(--gris);margin-top:6px}
+
+table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
+table.tbl th,table.tbl td{padding:5px 8px;border-bottom:1px solid var(--linea);text-align:left}
+table.tbl th{background:var(--azul);color:#fff;position:sticky;top:0}
+.tbl-wrap{max-height:420px;overflow:auto;border:1px solid var(--linea);border-radius:10px}
+
+.heat-estac{display:grid;gap:2px;font-size:11px}
+.heat-estac .hcell{padding:4px 2px;text-align:center;border-radius:3px;color:#333;white-space:nowrap}
+.heat-estac .hrow-lbl{padding:4px 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px}
+
+footer{margin-top:24px;padding:16px 22px;border-top:1px solid var(--linea);background:var(--panel);
+  font-size:12.5px;color:#444}
+footer .cols{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:10px 0}
+@media(max-width:700px){footer .cols{grid-template-columns:1fr}}
+footer ul{margin:6px 0;padding-left:18px}
+
+#cargando{position:fixed;inset:0;background:rgba(255,255,255,.95);display:flex;
+  align-items:center;justify-content:center;flex-direction:column;gap:10px;z-index:3000}
+.spin{width:38px;height:38px;border:4px solid #e3e8ee;border-top-color:var(--azul);
+  border-radius:50%;animation:gira 1s linear infinite}
+@keyframes gira{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+
+<div id="cargando"><div class="spin"></div><div id="cargando-msg">Cargando datos…</div></div>
+
+<header>
+  <img id="logo" src="logo/ungrd-horizontal.png" alt="UNGRD"
+       onerror="this.style.display='none'">
+  <div>
+    <div class="htit">Incendios Forestales · Colombia</div>
+    <div class="hsub">Unidad Nacional para la Gestión del Riesgo de Desastres · Subdirección para el Conocimiento del Riesgo</div>
+  </div>
+</header>
+
+<div class="wrap">
+  <!-- ===================== CONTROLES ===================== -->
+  <aside>
+    <h3>Periodo</h3>
+    <div class="ctl">
+      <label for="selAnio">Año</label>
+      <select id="selAnio"></select>
+    </div>
+    <div class="ctl">
+      <label for="fIni">Desde (inicio del incendio)</label>
+      <input type="date" id="fIni">
+    </div>
+    <div class="ctl">
+      <label for="fFin">Hasta</label>
+      <input type="date" id="fFin">
+    </div>
+
+    <h3>Navegación</h3>
+    <div class="ctl">
+      <label>Nivel de vista</label>
+      <div class="radio-row" id="nivelRadios">
+        <label><input type="radio" name="nivel" value="Nacional" checked> Nacional</label>
+        <label><input type="radio" name="nivel" value="Departamental"> Departamental</label>
+        <label><input type="radio" name="nivel" value="Municipal"> Municipal</label>
+      </div>
+    </div>
+    <div class="ctl oculto" id="ctlDepto">
+      <label for="selDepto">Departamento</label>
+      <select id="selDepto"></select>
+    </div>
+    <div class="ctl oculto" id="ctlMuni">
+      <label for="selMuni">Municipio</label>
+      <select id="selMuni"></select>
+    </div>
+
+    <h3>Confianza del incendio</h3>
+    <div class="mini">A mayor confianza, detección más precisa (más satélites/algoritmos).</div>
+    <div class="chips" id="chipsConf" style="margin-top:8px"></div>
+    <label class="chk" style="margin-top:8px"><input type="checkbox" id="chkInsuf"> Mostrar datos insuficientes (0.0)</label>
+
+    <h3>Reporte</h3>
+    <button class="btn sec" id="btnPDF">🖨️ Descargar PDF (vista actual)</button>
+    <div class="mini">Genera un PDF con el mapa y las gráficas en pantalla.</div>
+    <button class="btn sec" id="btnCSV" style="margin-top:8px">⬇️ Descargar tabla (CSV)</button>
+  </aside>
+
+  <!-- ===================== CONTENIDO ===================== -->
+  <main id="contenido">
+    <div class="titulo-zona" id="tituloZona">Vista nacional</div>
+
+    <div class="kpis" id="kpis">
+      <div class="kpi"><div class="k">Eventos</div><div class="v" id="kpiEventos">—</div></div>
+      <div class="kpi"><div class="k">Área total (ha)</div><div class="v" id="kpiArea">—</div></div>
+      <div class="kpi"><div class="k">Área promedio (ha)</div><div class="v" id="kpiAreaProm">—</div></div>
+      <div class="kpi"><div class="k">% confianza alta (≥0.6)</div><div class="v" id="kpiAlta">—</div></div>
+    </div>
+
+    <div class="barra-mapa">
+      <div id="ctlMetodo">
+        <span class="mini" style="margin-right:6px">Clasificación del mapa:</span>
+        <div class="seg" id="segMetodo">
+          <button data-m="Cortes naturales (Jenks)" aria-pressed="true">Jenks</button>
+          <button data-m="Rangos técnicos (alerta)" aria-pressed="false">Rangos técnicos</button>
+          <button data-m="Cuantiles" aria-pressed="false">Cuantiles</button>
+        </div>
+      </div>
+      <div id="ctlVis" class="oculto">
+        <span class="mini" style="margin-right:6px">Visualización:</span>
+        <div class="seg" id="segVis">
+          <button data-v="Puntos agrupados" aria-pressed="true">Puntos agrupados</button>
+          <button data-v="Solo puntos" aria-pressed="false">Solo puntos</button>
+          <button data-v="Mapa de calor" aria-pressed="false">Mapa de calor</button>
+        </div>
+      </div>
+    </div>
+    <div class="explica" id="explicaMetodo"></div>
+
+    <div id="mapa"></div>
+    <div class="leyenda" id="leyendaMapa"></div>
+
+    <hr class="divisor">
+    <div class="seccion-tit">📊 Análisis</div>
+
+    <div class="grid2">
+      <div class="card"><h4>Distribución por nivel de confianza</h4>
+        <div class="chart-box"><canvas id="chConf"></canvas></div></div>
+      <div class="card"><h4>Eventos por mes (comparativo por año)</h4>
+        <div class="chart-box"><canvas id="chMes"></canvas></div>
+        <div class="cap">Cada línea de color es un año; la línea negra punteada es el promedio mensual entre años.</div></div>
+    </div>
+
+    <div class="card" style="margin-top:16px"><h4>Eventos por día (rango seleccionado)</h4>
+      <div class="chart-box alta"><canvas id="chDia"></canvas></div>
+      <div class="cap">Línea gris: eventos diarios. Línea roja: promedio móvil de 7 días.</div></div>
+
+    <div id="secAnual">
+      <div class="seccion-tit" style="font-size:14px">Análisis comparativo por año</div>
+      <div class="cap" id="notaParcial" style="margin:-4px 0 10px"></div>
+      <div class="grid3">
+        <div class="card">
+          <h4 style="text-align:center">Eventos por año (%)</h4>
+          <div class="chart-box"><canvas id="chTortaEv"></canvas></div>
+          <h4 style="text-align:center;margin-top:10px">Área quemada por año (%)</h4>
+          <div class="chart-box"><canvas id="chTortaAr"></canvas></div>
+        </div>
+        <div class="card"><h4>Eventos por año (y variación %)</h4>
+          <div class="chart-box alta"><canvas id="chBarraEv"></canvas></div></div>
+        <div class="card"><h4>Área quemada por año (y variación %)</h4>
+          <div class="chart-box alta"><canvas id="chBarraAr"></canvas></div></div>
+      </div>
+    </div>
+
+    <div class="grid2" style="margin-top:16px" id="secTops">
+      <div class="card"><h4 id="topT1">Top 10</h4><div class="chart-box"><canvas id="chTop1"></canvas></div></div>
+      <div class="card"><h4 id="topT2">Top 10</h4><div class="chart-box"><canvas id="chTop2"></canvas></div></div>
+    </div>
+
+    <!-- ===== Gestión del riesgo (Nacional / Departamental) ===== -->
+    <div id="secRiesgo">
+      <hr class="divisor">
+      <div class="seccion-tit">🔎 Análisis para gestión del riesgo</div>
+      <div class="cap" style="margin-top:-6px">Herramientas para anticipar y priorizar ante la temporada seca / Fenómeno de El Niño.</div>
+
+      <div class="card" style="margin-top:10px"><h4>1. Recurrencia estacional</h4>
+        <div class="cap" style="margin-top:-2px">Municipios que se queman en el mismo mes a lo largo de varios años (patrón predecible).</div>
+        <div class="tbl-wrap" style="margin-top:8px;max-height:320px"><table class="tbl" id="tblRec"></table></div>
+      </div>
+
+      <div class="card" style="margin-top:16px"><h4>2. Mapa de calor de estacionalidad (municipio × mes)</h4>
+        <div class="heat-estac" id="heatEstac" style="margin-top:8px"></div>
+      </div>
+
+      <div class="grid2" style="margin-top:16px">
+        <div class="card"><h4>3. Municipios reincidentes</h4>
+          <div class="cap" style="margin-top:-2px">Más años distintos con incendios = vigilancia prioritaria.</div>
+          <div class="tbl-wrap" style="margin-top:8px;max-height:300px"><table class="tbl" id="tblReinc"></table></div>
+        </div>
+        <div class="card"><h4>4. Distribución histórica por mes</h4>
+          <div class="chart-box"><canvas id="chCal"></canvas></div>
+          <div class="cap" id="capPico"></div>
+        </div>
+      </div>
+    </div>
+
+    <hr class="divisor">
+    <div class="seccion-tit" style="font-size:14px">Tabla de eventos (principales por área)</div>
+    <div class="tbl-wrap"><table class="tbl" id="tblEventos"></table></div>
+
+    <footer id="pie">
+      <div style="font-weight:700;color:var(--tinta)">Términos de uso</div>
+      <div style="text-align:justify;margin-top:4px">
+        Los GeoVisores de la UNGRD facilitan al público el acceso, consulta y visualización de información
+        geográfica relacionada con la gestión del riesgo de desastres en Colombia. La información tiene
+        carácter informativo y de apoyo a la toma de decisiones; su uso e interpretación es responsabilidad
+        del usuario. La UNGRD no garantiza que esté libre de errores y podrá actualizarla sin previo aviso.
+        Respete los derechos de autor y cite la fuente.
+      </div>
+      <div class="cols">
+        <div>
+          <b>Realizado por:</b> Jorge Alpala (jorge.alpala@gestiondelriesgo.gov.co, UNGRD – SCR).<br>
+          <b>Elaboración:</b> 2026.
+        </div>
+        <div>
+          <b>Fuentes y créditos:</b> Datos: OroraTech WildFire Solution (WFS) · Límites: DIVIPOLA – DANE.<br>
+          Desarrollado con Leaflet, Chart.js, hyparquet y jsPDF. Mapa base: Esri · OpenStreetMap.
+        </div>
+      </div>
+      <div style="font-size:11.5px;color:#666;border-top:1px solid var(--linea);padding-top:8px">
+        <b>Cómo citar:</b> Alpala, J. (2026). <i>Incendios Forestales – Colombia: GeoVisor de monitoreo y análisis
+        de incendios con datos de WildFire Solution (OroraTech)</i>. UNGRD – Subdirección para el Conocimiento del Riesgo.
+      </div>
+    </footer>
+  </main>
+</div>
+
+<script type="module">
+import { parquetRead } from 'https://cdn.jsdelivr.net/npm/hyparquet@1.31.2/+esm';
+
+/* ====================== CONSTANTES ====================== */
+const RUTA = {
+  parquet: 'data/wfs/incendios_web.parquet',
+  deptos:  'data/wfs/departamentos_simplificado.geojson',
+  munis:   'data/wfs/municipios_simplificado.geojson',
+};
+// Confianza: clave = confidence*10
+const COLOR_CONF = {0:'#95a5a6',2:'#2ecc71',4:'#f1c40f',6:'#e67e22',8:'#e74c3c',10:'#c0392b'};
+const ETIQ_CONF  = {0:'0.0 (insuficiente)',2:'0.2',4:'0.4',6:'0.6',8:'0.8',10:'1.0'};
+const ORDEN_CONF = [0,2,4,6,8,10];
+const CONF_ALTA  = [6,8,10];
+
+const PALETA_ANIOS = ['#27ae60','#2980b9','#e74c3c','#8e44ad','#f39c12','#16a085',
+                      '#c0392b','#2c3e50','#d35400','#7f8c8d','#e67e22','#1abc9c'];
+const COLOR_ANIO = {};
+[...Array(12).keys()].forEach(i => COLOR_ANIO[2019+i] = PALETA_ANIOS[i % PALETA_ANIOS.length]);
+
+const RANGOS_TECNICOS = [0,100,500,1500,4000];           // bordes inferiores (nivel superior abierto)
+const ETIQUETAS_ALERTA = ['Bajo','Moderado','Alto','Muy alto','Crítico'];
+const RAMPA = ['#ffffb2','#fecc5c','#fd8d3c','#f03b20','#bd0026','#7a0019'];
+const MESES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+
+const EXPLICA = {
+  'Cortes naturales (Jenks)':'Agrupa los departamentos buscando los saltos naturales en los datos. Ideal para explorar la situación de un periodo.',
+  'Rangos técnicos (alerta)':'Umbrales fijos de alerta (Bajo…Crítico). No cambian, así que permiten comparar el mapa entre distintas fechas.',
+  'Cuantiles':'Reparte los departamentos en grupos del mismo tamaño.'
+};
+
+/* ====================== ESTADO ====================== */
+const E = {
+  anio:'Todos', fIni:0, fFin:0, nivel:'Nacional', depto:null, muni:null,
+  confs:new Set(CONF_ALTA), insuf:false, metodo:'Cortes naturales (Jenks)',
+  vis:'Puntos agrupados'
+};
+let D = null;              // datos compactos (TypedArrays)
+let gjDep=null, gjMun=null;
+let nomDep=new Map(), nomMun=new Map();     // codigo -> nombre
+let munsPorDep=new Map();                    // codDepto -> [features muni]
+let F_MIN=0, F_MAX=0;                         // yyyymmdd
+const charts={};
+let mapa, capaChoro, capaMunis, capaContorno, capaCalor, capaPuntos, capaCluster, baseEsri, baseOSM;
+
+/* ====================== UTILIDADES ====================== */
+const $ = s => document.querySelector(s);
+const fmt = n => n.toLocaleString('es-CO');
+const fmt0 = n => Math.round(n).toLocaleString('es-CO');
+const fmt1 = n => n.toLocaleString('es-CO',{minimumFractionDigits:1,maximumFractionDigits:1});
+function yyyymmdd_a_iso(f){ const s=String(f); return s.slice(0,4)+'-'+s.slice(4,6)+'-'+s.slice(6,8); }
+function iso_a_yyyymmdd(iso){ return parseInt(iso.replace(/-/g,''),10); }
+function diaIndex(f){ const y=(f/10000)|0, m=((f/100)|0)%100, d=f%100; return Date.UTC(y,m-1,d)/86400000; }
+function depCodeOfMuni(mp){ return mp===11001 ? 11001 : parseInt(String(mp).padStart(5,'0').slice(0,2),10); }
+
+/* ====================== JENKS ====================== */
+function jenksBreaks(data, nClasses){
+  const v = Float64Array.from(data).sort((a,b)=>a-b);
+  const n = v.length;
+  if(n <= nClasses) return [...new Set(v)];
+  const mat1 = Array.from({length:n+1},()=>new Array(nClasses+1).fill(0));
+  const mat2 = Array.from({length:n+1},()=>new Array(nClasses+1).fill(Infinity));
+  for(let i=1;i<=nClasses;i++){ mat1[1][i]=1; mat2[1][i]=0; for(let j=2;j<=n;j++) mat2[j][i]=Infinity; }
+  for(let l=2;l<=n;l++){
+    let s1=0,s2=0,w=0,var_=0;
+    for(let m=1;m<=l;m++){
+      const i3=l-m+1, val=v[i3-1];
+      s2+=val*val; s1+=val; w++; var_=s2-(s1*s1)/w;
+      const i4=i3-1;
+      if(i4!==0){ for(let j=2;j<=nClasses;j++){ if(mat2[l][j] >= var_+mat2[i4][j-1]){ mat1[l][j]=i3; mat2[l][j]=var_+mat2[i4][j-1]; } } }
+    }
+    mat1[l][1]=1; mat2[l][1]=var_;
+  }
+  const k=n, kclass=new Array(nClasses+1).fill(0);
+  kclass[nClasses]=v[n-1]; kclass[0]=v[0];
+  let kk=n;
+  for(let j=nClasses;j>=2;j--){ const idx=mat1[kk][j]-2; kclass[j-1]=v[idx]; kk=mat1[kk][j]-1; }
+  return kclass;
+}
+function uniq(arr){ return [...new Set(arr)].sort((a,b)=>a-b); }
+function cuantil(sorted,q){ const pos=(sorted.length-1)*q, b=Math.floor(pos), r=pos-b;
+  return sorted[b+1]!==undefined ? sorted[b]+r*(sorted[b+1]-sorted[b]) : sorted[b]; }
+
+function calcularCortes(vals, metodo){
+  const arr=Array.from(vals); const vmin=Math.min(...arr), vmax=Math.max(...arr);
+  if(metodo==='Rangos técnicos (alerta)'){
+    let inf=RANGOS_TECNICOS.filter(c=>c<vmax); if(!inf.length) inf=[RANGOS_TECNICOS[0]];
+    let cortes=[...inf, Math.max(vmax, inf[inf.length-1]+1)];
+    if(cortes[0]>vmin) cortes=[vmin,...cortes];
+    return uniq(cortes);
+  }
+  if(metodo==='Cortes naturales (Jenks)') return uniq(jenksBreaks(arr,5));
+  const s=arr.slice().sort((a,b)=>a-b);
+  return uniq([0,.2,.4,.6,.8,1].map(q=>cuantil(s,q)));
+}
+function colorDe(x,cortes){
+  for(let i=0;i<cortes.length-1;i++){ if(x<=cortes[i+1]) return RAMPA[Math.min(i,RAMPA.length-1)]; }
+  return RAMPA[Math.min(cortes.length-2,RAMPA.length-1)];
+}
+
+/* ====================== CARGA ====================== */
+async function cargar(){
+  const msg = $('#cargando-msg');
+  msg.textContent='Descargando datos…';
+  const [buf, dep, mun] = await Promise.all([
+    fetch(RUTA.parquet,{cache:'no-cache'}).then(r=>r.arrayBuffer()),
+    fetch(RUTA.deptos).then(r=>r.json()),
+    fetch(RUTA.munis).then(r=>r.json()),
+  ]);
+  gjDep=dep; gjMun=mun;
+  // nombres
+  for(const f of gjDep.features){ const c=Number(f.properties.DeCodigo); if(!isNaN(c)) nomDep.set(c, f.properties.DeNombre); }
+  for(const f of gjMun.features){
+    const c=Number(f.properties.MpCodigo); if(!isNaN(c)) nomMun.set(c, f.properties.MpNombre);
+    f.properties._dep = depCodeOfMuni(c);
+    if(!munsPorDep.has(f.properties._dep)) munsPorDep.set(f.properties._dep, []);
+    munsPorDep.get(f.properties._dep).push(f);
+  }
+  msg.textContent='Procesando incendios…';
+  await new Promise((res,rej)=>{
+    parquetRead({ file:buf, columns:['f','cd','cm','lon','lat','conf','area','nf'],
+      onComplete: rows => { D = compactar(rows); res(); },
+      onError: rej });
+  });
+}
+
+function compactar(rows){
+  const n=rows.length;
+  const o={ n,
+    F:new Int32Array(n), DI:new Int32Array(n), YR:new Int16Array(n), MO:new Uint8Array(n),
+    CD:new Int32Array(n), CM:new Int32Array(n),
+    LON:new Float32Array(n), LAT:new Float32Array(n),
+    CONF:new Uint8Array(n), AREA:new Float32Array(n), NF:new Uint16Array(n) };
+  for(let i=0;i<n;i++){
+    const r=rows[i], f=r[0];
+    o.F[i]=f; o.DI[i]=diaIndex(f);
+    o.YR[i]=(f/10000)|0; o.MO[i]=((f/100)|0)%100;
+    o.CD[i]=r[1]; o.CM[i]=r[2]; o.LON[i]=r[3]; o.LAT[i]=r[4];
+    o.CONF[i]=r[5]; o.AREA[i]=r[6]; o.NF[i]=r[7];
+  }
+  F_MIN=o.F[0]; F_MAX=o.F[0];
+  for(let i=1;i<n;i++){ if(o.F[i]<F_MIN)F_MIN=o.F[i]; if(o.F[i]>F_MAX)F_MAX=o.F[i]; }
+  return o;
+}
+
+/* ====================== MASCARAS / FILTROS ====================== */
+let maskBase=null;   // date + confianza (sin geo)
+function confsActivas(){ const s=new Set(E.confs); if(E.insuf) s.add(0); return s; }
+function calcularMascara(){
+  const n=D.n, m=new Uint8Array(n), cs=confsActivas();
+  const i0=E.fIni, i1=E.fFin;
+  for(let i=0;i<n;i++){ const f=D.F[i]; m[i]=(f>=i0 && f<=i1 && cs.has(D.CONF[i]))?1:0; }
+  maskBase=m;
+}
+// predicado geografico segun nivel (para 'datos')
+function geoOK(i){
+  if(E.nivel==='Nacional') return true;
+  if(E.nivel==='Departamental') return D.CD[i]===E.depto;
+  return D.CD[i]===E.depto && D.CM[i]===E.muni;
+}
+// ambito para gestion del riesgo: nacional=todo, departamental=depto
+function ambitoOK(i){ return E.nivel==='Departamental' ? D.CD[i]===E.depto : true; }
+
+/* ====================== KPIs ====================== */
+function pintarKPIs(){
+  let nEv=0, area=0, alta=0;
+  for(let i=0;i<D.n;i++){ if(maskBase[i] && geoOK(i)){ nEv++; area+=D.AREA[i]; if(CONF_ALTA.includes(D.CONF[i])) alta++; } }
+  $('#kpiEventos').textContent=fmt(nEv);
+  $('#kpiArea').textContent=fmt0(area);
+  $('#kpiAreaProm').textContent=nEv?fmt1(area/nEv):'0';
+  $('#kpiAlta').textContent=(nEv?Math.round(100*alta/nEv):0)+'%';
+}
+
+/* ====================== GRAFICAS ====================== */
+function nuevoChart(id,cfg){ if(charts[id]) charts[id].destroy(); charts[id]=new Chart($('#'+id),cfg); }
+const ejeComun={plugins:{legend:{display:false}},maintainAspectRatio:false,responsive:true,
+  scales:{x:{grid:{display:false}},y:{beginAtZero:true,grid:{color:'#eef1f4'}}}};
+
+function gConfianza(){
+  const cnt={}; ORDEN_CONF.forEach(c=>cnt[c]=0);
+  const cs=confsActivas();
+  for(let i=0;i<D.n;i++){ if(maskBase[i]&&geoOK(i)){ const c=D.CONF[i]; if(cs.has(c)) cnt[c]++; } }
+  const niveles=ORDEN_CONF.filter(c=>cs.has(c));
+  nuevoChart('chConf',{type:'bar',data:{labels:niveles.map(c=>ETIQ_CONF[c].split(' ')[0]),
+    datasets:[{data:niveles.map(c=>cnt[c]),backgroundColor:niveles.map(c=>COLOR_CONF[c])}]},
+    options:ejeComun});
+}
+
+function gMes(){
+  // conteo [anio][mes]
+  const porAnio={};
+  for(let i=0;i<D.n;i++){ if(maskBase[i]&&geoOK(i)){ const a=D.YR[i], mo=D.MO[i]-1;
+    (porAnio[a]=porAnio[a]||new Array(12).fill(0))[mo]++; } }
+  const anios=Object.keys(porAnio).map(Number).sort();
+  const ds=anios.map(a=>({label:String(a),data:porAnio[a],borderColor:COLOR_ANIO[a]||'#888',
+    backgroundColor:COLOR_ANIO[a]||'#888',tension:.3,pointRadius:2,borderWidth:2}));
+  // promedio mensual
+  const prom=new Array(12).fill(0);
+  for(let m=0;m<12;m++){ let s=0,k=0; anios.forEach(a=>{s+=porAnio[a][m];k++;}); prom[m]=k?s/k:0; }
+  ds.push({label:'Promedio',data:prom,borderColor:'#000',borderDash:[6,4],pointRadius:0,borderWidth:1.3});
+  nuevoChart('chMes',{type:'line',data:{labels:MESES,datasets:ds},
+    options:{maintainAspectRatio:false,responsive:true,
+      plugins:{legend:{position:'bottom',labels:{boxWidth:12,font:{size:10}}}},
+      scales:{x:{grid:{display:false}},y:{beginAtZero:true,grid:{color:'#eef1f4'}}}}});
+}
+
+function gDia(){
+  const porDia=new Map();
+  for(let i=0;i<D.n;i++){ if(maskBase[i]&&geoOK(i)){ const d=D.DI[i]; porDia.set(d,(porDia.get(d)||0)+1); } }
+  if(!porDia.size){ nuevoChart('chDia',{type:'line',data:{labels:[],datasets:[]},options:ejeComun}); return; }
+  const dmin=Math.min(...porDia.keys()), dmax=Math.max(...porDia.keys());
+  const labels=[], ev=[];
+  for(let d=dmin;d<=dmax;d++){ const dt=new Date(d*86400000);
+    labels.push(dt.toISOString().slice(0,10)); ev.push(porDia.get(d)||0); }
+  // media movil 7 (centrada)
+  const ma=ev.map((_,i)=>{ let s=0,k=0; for(let j=Math.max(0,i-3);j<=Math.min(ev.length-1,i+3);j++){s+=ev[j];k++;} return s/k; });
+  nuevoChart('chDia',{type:'line',data:{labels,datasets:[
+    {label:'Eventos',data:ev,borderColor:'#bdc3c7',pointRadius:0,borderWidth:1},
+    {label:'Media 7 días',data:ma,borderColor:'#e74c3c',pointRadius:0,borderWidth:2}]},
+    options:{maintainAspectRatio:false,responsive:true,plugins:{legend:{display:false}},
+      scales:{x:{grid:{display:false},ticks:{maxTicksLimit:10}},y:{beginAtZero:true,grid:{color:'#eef1f4'}}}}});
+}
+
+function resumenAnual(){
+  const ev={}, ar={};
+  for(let i=0;i<D.n;i++){ if(maskBase[i]&&geoOK(i)){ const a=D.YR[i];
+    ev[a]=(ev[a]||0)+1; ar[a]=(ar[a]||0)+D.AREA[i]; } }
+  const anios=Object.keys(ev).map(Number).sort();
+  return anios.map(a=>({anio:a,eventos:ev[a],area:ar[a]}));
+}
+function gAnual(){
+  const res=resumenAnual();
+  const sec=$('#secAnual');
+  if(res.length<1){ sec.classList.add('oculto'); return; } sec.classList.remove('oculto');
+  // parcial: año de corte global
+  const anioCorte=(F_MAX/10000)|0, mesCorte=((F_MAX/100)|0)%100, parcial=mesCorte<12;
+  const etqA=a=>(a===anioCorte&&parcial)?`${a} parcial`:String(a);
+  $('#notaParcial').textContent = (parcial && res.some(r=>r.anio===anioCorte))
+    ? `Nota: ${anioCorte} es un periodo parcial (datos hasta el mes ${String(mesCorte).padStart(2,'0')}); su comparación es solo referencial.` : '';
+  const labels=res.map(r=>etqA(r.anio)), colores=res.map(r=>COLOR_ANIO[r.anio]||'#95a5a6');
+  const totEv=res.reduce((s,r)=>s+r.eventos,0), totAr=res.reduce((s,r)=>s+r.area,0);
+  // tortas (dona)
+  const donut={maintainAspectRatio:false,responsive:true,cutout:'45%',
+    plugins:{legend:{position:'bottom',labels:{boxWidth:10,font:{size:9}}},
+      tooltip:{callbacks:{label:c=>`${c.label}: ${fmt(c.raw)} (${Math.round(100*c.raw/(c.dataset.data.reduce((a,b)=>a+b,0)))}%)`}}}};
+  nuevoChart('chTortaEv',{type:'doughnut',data:{labels,datasets:[{data:res.map(r=>r.eventos),backgroundColor:colores}]},options:donut});
+  nuevoChart('chTortaAr',{type:'doughnut',data:{labels,datasets:[{data:res.map(r=>r.area),backgroundColor:colores}]},options:donut});
+  // barras con variacion %
+  const barOpt=(fmtv)=>({maintainAspectRatio:false,responsive:true,plugins:{legend:{display:false},
+    tooltip:{callbacks:{label:c=>fmtv(c.raw)}}},scales:{x:{grid:{display:false}},y:{beginAtZero:true,grid:{color:'#eef1f4'}}}});
+  const varPct=arr=>arr.map((v,i)=>i? (arr[i-1]? (100*(v-arr[i-1])/arr[i-1]):null):null);
+  const evArr=res.map(r=>r.eventos), arArr=res.map(r=>r.area);
+  const vpEv=varPct(evArr), vpAr=varPct(arArr);
+  const etiqPlugin=(vp)=>({id:'etq',afterDatasetsDraw(ch){const{ctx}=ch;ctx.save();ctx.font='bold 11px Public Sans';ctx.textAlign='center';
+    ch.getDatasetMeta(0).data.forEach((bar,i)=>{if(vp[i]==null)return;const t=(vp[i]>=0?'+':'')+Math.round(vp[i])+'%';
+      ctx.fillStyle=vp[i]>=0?'#c0392b':'#27ae60';ctx.fillText(t,bar.x,bar.y-6);});ctx.restore();}});
+  nuevoChart('chBarraEv',{type:'bar',data:{labels,datasets:[{data:evArr,backgroundColor:colores}]},
+    options:barOpt(v=>fmt(v)+' eventos'),plugins:[etiqPlugin(vpEv)]});
+  nuevoChart('chBarraAr',{type:'bar',data:{labels,datasets:[{data:arArr,backgroundColor:colores}]},
+    options:barOpt(v=>fmt0(v)+' ha'),plugins:[etiqPlugin(vpAr)]});
+}
+
+function topN(campoFn, valor, nivelData){
+  // nivelData: 'dff' (nacional, sin filtro geo) o 'datos'
+  const acc=new Map();
+  for(let i=0;i<D.n;i++){
+    if(!maskBase[i]) continue;
+    if(nivelData==='datos' && !geoOK(i)) continue;
+    const key=campoFn(i); if(key==null) continue;
+    acc.set(key, (acc.get(key)||0) + (valor==='area'?D.AREA[i]:1));
+  }
+  return [...acc.entries()].sort((a,b)=>b[1]-a[1]).slice(0,10);
+}
+function gTops(){
+  const sec=$('#secTops');
+  let t1,t2,lab1,lab2,nombreFn;
+  if(E.nivel==='Nacional'){
+    nombreFn=i=>D.CD[i]; const nombre=c=>nomDep.get(c)||String(c);
+    t1=topN(nombreFn,'eventos','dff'); t2=topN(nombreFn,'area','dff');
+    lab1='Top 10 departamentos por eventos'; lab2='Top 10 departamentos por área (ha)';
+    dibujarTop('chTop1',t1,nombre,'#e74c3c',false); dibujarTop('chTop2',t2,nombre,'#c0392b',true);
+  } else if(E.nivel==='Departamental'){
+    nombreFn=i=>D.CM[i]; const nombre=c=>nomMun.get(c)||String(c);
+    t1=topN(nombreFn,'eventos','datos'); t2=topN(nombreFn,'area','datos');
+    lab1='Top 10 municipios por eventos'; lab2='Top 10 municipios por área (ha)';
+    dibujarTop('chTop1',t1,nombre,'#e74c3c',false); dibujarTop('chTop2',t2,nombre,'#c0392b',true);
+  } else {
+    // Municipal: histograma de área por evento + (sin satélite)
+    lab1='Distribución de área por evento (ha)'; lab2='Área acumulada por mes (ha)';
+    gHistArea('chTop1'); gAreaMes('chTop2');
+  }
+  $('#topT1').textContent=lab1; $('#topT2').textContent=lab2;
+}
+function dibujarTop(id,arr,nombre,color,esArea){
+  nuevoChart(id,{type:'bar',data:{labels:arr.map(e=>nombre(e[0])),
+    datasets:[{data:arr.map(e=>e[1]),backgroundColor:color}]},
+    options:{indexAxis:'y',maintainAspectRatio:false,responsive:true,plugins:{legend:{display:false},
+      tooltip:{callbacks:{label:c=>esArea?fmt0(c.raw)+' ha':fmt(c.raw)+' eventos'}}},
+      scales:{x:{beginAtZero:true,grid:{color:'#eef1f4'}},y:{grid:{display:false}}}}});
+}
+function gHistArea(id){
+  const vals=[];
+  for(let i=0;i<D.n;i++){ if(maskBase[i]&&geoOK(i)) vals.push(D.AREA[i]); }
+  if(!vals.length){ nuevoChart(id,{type:'bar',data:{labels:[],datasets:[]},options:ejeComun}); return; }
+  const s=vals.slice().sort((a,b)=>a-b); const cap=cuantil(s,0.98)||1;
+  const nb=25, w=cap/nb, bins=new Array(nb).fill(0);
+  vals.forEach(v=>{ let b=Math.min(nb-1,Math.floor(Math.min(v,cap)/w)); bins[b]++; });
+  nuevoChart(id,{type:'bar',data:{labels:bins.map((_,i)=>fmt0(i*w)),
+    datasets:[{data:bins,backgroundColor:'#e67e22'}]},options:ejeComun});
+}
+function gAreaMes(id){
+  const porMes=new Array(12).fill(0);
+  for(let i=0;i<D.n;i++){ if(maskBase[i]&&geoOK(i)) porMes[D.MO[i]-1]+=D.AREA[i]; }
+  nuevoChart(id,{type:'bar',data:{labels:MESES,datasets:[{data:porMes,backgroundColor:'#16a085'}]},
+    options:{...ejeComun,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>fmt0(c.raw)+' ha'}}}}});
+}
+
+/* ====================== GESTION DEL RIESGO ====================== */
+function seccionRiesgo(){
+  const sec=$('#secRiesgo');
+  if(E.nivel==='Municipal'){ sec.classList.add('oculto'); return; } sec.classList.remove('oculto');
+  // agregados por municipio
+  const porMuniMes=new Map();   // muni -> Map(mes -> {anios:Set, ev})
+  const porMuni=new Map();      // muni -> {anios:Set, ev}
+  const nombreMuniFull=cm=>{ const n=nomMun.get(cm)||String(cm); const dc=munsPorDep.has(0)?null:null;
+    return n; };
+  for(let i=0;i<D.n;i++){
+    if(!maskBase[i]||!ambitoOK(i)) continue;
+    const cm=D.CM[i]; if(!cm) continue;
+    const a=D.YR[i], mo=D.MO[i];
+    if(!porMuni.has(cm)) porMuni.set(cm,{anios:new Set(),ev:0});
+    const pm=porMuni.get(cm); pm.anios.add(a); pm.ev++;
+    if(!porMuniMes.has(cm)) porMuniMes.set(cm,new Map());
+    const mm=porMuniMes.get(cm);
+    if(!mm.has(mo)) mm.set(mo,{anios:new Set(),ev:0});
+    const c=mm.get(mo); c.anios.add(a); c.ev++;
+  }
+  const nMun=cm=>{ const base=nomMun.get(cm)||String(cm); const dep=nomDep.get(depCodeOfMuni(cm))||''; return dep?`${base} (${dep})`:base; };
+
+  // 1) recurrencia estacional (anios>=2 en un mismo mes)
+  const rec=[];
+  for(const [cm,mm] of porMuniMes){ for(const [mo,c] of mm){ if(c.anios.size>=2)
+    rec.push({muni:nMun(cm),mes:MESES[mo-1],anios:c.anios.size,ev:c.ev}); } }
+  rec.sort((a,b)=> b.anios-a.anios || b.ev-a.ev);
+  $('#tblRec').innerHTML = rec.length
+    ? `<thead><tr><th>Municipio</th><th>Mes</th><th>Años recurrentes</th><th>Eventos</th></tr></thead><tbody>`
+      + rec.slice(0,15).map(r=>`<tr><td>${r.muni}</td><td>${r.mes}</td><td>${r.anios}</td><td>${fmt(r.ev)}</td></tr>`).join('')+`</tbody>`
+    : `<tbody><tr><td style="padding:10px">No hay suficientes años en el periodo para detectar recurrencia estacional.</td></tr></tbody>`;
+
+  // 2) heatmap estacionalidad (top 15 municipios por eventos)
+  const topMun=[...porMuni.entries()].sort((a,b)=>b[1].ev-a[1].ev).slice(0,15).map(e=>e[0]);
+  const cont=$('#heatEstac');
+  if(topMun.length){
+    let maxv=1; topMun.forEach(cm=>{ const mm=porMuniMes.get(cm); for(const[,c]of mm) if(c.ev>maxv)maxv=c.ev; });
+    cont.style.gridTemplateColumns='minmax(120px,1fr) repeat(12,1fr)';
+    let html=`<div class="hcell" style="background:transparent"></div>`+MESES.map(m=>`<div class="hcell" style="font-weight:600">${m}</div>`).join('');
+    topMun.forEach(cm=>{ const mm=porMuniMes.get(cm);
+      html+=`<div class="hrow-lbl" title="${nMun(cm)}">${nMun(cm)}</div>`;
+      for(let mo=1;mo<=12;mo++){ const ev=mm.has(mo)?mm.get(mo).ev:0; const t=ev/maxv;
+        const col=interpOrange(t); html+=`<div class="hcell" style="background:${col}" title="${nMun(cm)} · ${MESES[mo-1]}: ${fmt(ev)}">${ev||''}</div>`; }
+    });
+    cont.innerHTML=html;
+  } else cont.innerHTML='<div class="cap">Sin datos suficientes.</div>';
+
+  // 3) reincidentes
+  const reinc=[...porMuni.entries()].map(([cm,v])=>({muni:nMun(cm),anios:v.anios.size,ev:v.ev}))
+    .sort((a,b)=> b.anios-a.anios || b.ev-a.ev).slice(0,12);
+  $('#tblReinc').innerHTML = `<thead><tr><th>Municipio</th><th>Años activos</th><th>Eventos</th></tr></thead><tbody>`
+    + reinc.map(r=>`<tr><td>${r.muni}</td><td>${r.anios}</td><td>${fmt(r.ev)}</td></tr>`).join('')+`</tbody>`;
+
+  // 4) distribucion historica por mes
+  const porMes=new Array(12).fill(0);
+  for(let i=0;i<D.n;i++){ if(maskBase[i]&&ambitoOK(i)) porMes[D.MO[i]-1]++; }
+  const pico=porMes.indexOf(Math.max(...porMes));
+  nuevoChart('chCal',{type:'bar',data:{labels:MESES,datasets:[{data:porMes,
+    backgroundColor:porMes.map((_,m)=>m===pico?'#c0392b':'#e67e22')}]},options:ejeComun});
+  const ambitoTxt = E.nivel==='Departamental' ? `el departamento de ${nomDep.get(E.depto)||''}` : 'nivel nacional';
+  $('#capPico').textContent = `Mes pico histórico en ${ambitoTxt}: ${MESES[pico]}.`;
+}
+function interpOrange(t){ // 0..1 -> blanco->naranja oscuro
+  t=Math.max(0,Math.min(1,t));
+  const c0=[255,255,245], c1=[179,0,0];
+  const r=Math.round(c0[0]+(c1[0]-c0[0])*t),g=Math.round(c0[1]+(c1[1]-c0[1])*t),b=Math.round(c0[2]+(c1[2]-c0[2])*t);
+  return `rgb(${r},${g},${b})`;
+}
+
+/* ====================== TABLA ====================== */
+function pintarTabla(){
+  const filas=[];
+  for(let i=0;i<D.n;i++){ if(maskBase[i]&&geoOK(i)) filas.push(i); }
+  filas.sort((a,b)=>D.AREA[b]-D.AREA[a]);
+  const top=filas.slice(0,200);
+  $('#tblEventos').innerHTML =
+    `<thead><tr><th>Departamento</th><th>Municipio</th><th>Área (ha)</th><th>Confianza</th><th>N° focos</th><th>Inicio</th></tr></thead><tbody>`
+    + top.map(i=>`<tr><td>${nomDep.get(D.CD[i])||''}</td><td>${nomMun.get(D.CM[i])||''}</td>`
+      +`<td>${fmt1(D.AREA[i])}</td><td>${(D.CONF[i]/10).toFixed(1)}</td><td>${D.NF[i]}</td><td>${yyyymmdd_a_iso(D.F[i])}</td></tr>`).join('')
+    + `</tbody>`;
+}
+function descargarCSV(){
+  const filas=[];
+  for(let i=0;i<D.n;i++){ if(maskBase[i]&&geoOK(i)) filas.push(i); }
+  filas.sort((a,b)=>D.AREA[b]-D.AREA[a]);
+  let csv='departamento,municipio,area,confidence,num_fires,fecha\n';
+  filas.forEach(i=>{ csv+=`"${nomDep.get(D.CD[i])||''}","${nomMun.get(D.CM[i])||''}",${D.AREA[i].toFixed(2)},${(D.CONF[i]/10).toFixed(1)},${D.NF[i]},${yyyymmdd_a_iso(D.F[i])}\n`; });
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8'}); const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob); a.download='incendios_seleccion.csv'; a.click(); URL.revokeObjectURL(a.href);
+}
+
+/* ====================== MAPA ====================== */
+function initMapa(){
+  mapa=L.map('mapa',{zoomSnap:.25,preferCanvas:true}).setView([4.6,-74.1],5.3);
+  const ESRI='https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}';
+  baseEsri=L.tileLayer(ESRI,{attribution:'Tiles &copy; Esri',maxZoom:16}).addTo(mapa);
+  baseOSM=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'&copy; OpenStreetMap',maxZoom:19});
+  L.control.layers({'Gris claro (Esri)':baseEsri,'OpenStreetMap':baseOSM},null,{position:'topright'}).addTo(mapa);
+}
+function limpiarCapas(){
+  [capaChoro,capaMunis,capaContorno,capaCalor,capaPuntos,capaCluster].forEach(c=>{ if(c){ mapa.removeLayer(c); } });
+  capaChoro=capaMunis=capaContorno=capaCalor=capaPuntos=capaCluster=null;
+}
+function conteoPorDepto(){ // usa dff (maskBase, sin geo)
+  const m=new Map();
+  for(let i=0;i<D.n;i++){ if(maskBase[i]){ const c=D.CD[i]; m.set(c,(m.get(c)||0)+1); } }
+  return m;
+}
+function actualizarMapa(){
+  limpiarCapas();
+  if(E.nivel==='Nacional') mapaNacional();
+  else if(E.nivel==='Departamental') mapaDepartamental();
+  else mapaMunicipal();
+}
+function mapaNacional(){
+  const cnt=conteoPorDepto();
+  const vals=gjDep.features.map(f=>cnt.get(Number(f.properties.DeCodigo))||0);
+  const cortes=calcularCortes(vals,E.metodo);
+  const usaBins = cortes.length>=3;
+  capaChoro=L.geoJSON(gjDep,{style:f=>{ const v=cnt.get(Number(f.properties.DeCodigo))||0;
+      return {fillColor:usaBins?colorDe(v,cortes):'#fed976',color:'#ffffff',weight:1,fillOpacity:.75}; },
+    onEachFeature:(f,layer)=>{ const nom=f.properties.DeNombre, v=cnt.get(Number(f.properties.DeCodigo))||0;
+      layer.bindTooltip(`${nom}: ${fmt(v)} eventos`,{sticky:true});
+      layer.on('mouseover',()=>layer.setStyle({weight:2,color:'#333'}));
+      layer.on('mouseout',()=>layer.setStyle({weight:1,color:'#ffffff'}));
+      layer.on('click',()=>{ const cd=Number(f.properties.DeCodigo); if(nomDep.has(cd)){ irADepto(cd); } });
+    }}).addTo(mapa);
+  mapa.setView([4.6,-74.1],5.3);
+  leyendaChoro(cortes,usaBins);
+}
+function leyendaChoro(cortes,usaBins){
+  const cont=$('#leyendaMapa'); if(!usaBins||cortes.length<3){ cont.innerHTML=''; return; }
+  const esTec=E.metodo==='Rangos técnicos (alerta)';
+  let items='';
+  for(let i=0;i<cortes.length-1;i++){ const ini=cortes[i],fin=cortes[i+1],col=RAMPA[Math.min(i,RAMPA.length-1)];
+    const ult=(i===cortes.length-2);
+    let txt= esTec&&i<ETIQUETAS_ALERTA.length ? (ult?`${ETIQUETAS_ALERTA[i]} (≥ ${fmt0(ini)})`:`${ETIQUETAS_ALERTA[i]} (${fmt0(ini)}–${fmt0(fin)})`)
+      : `${fmt0(ini)} – ${fmt0(fin)}`;
+    items+=`<span class="it"><span class="sw" style="background:${col}"></span>${txt}</span>`;
+  }
+  const nomMet={'Cortes naturales (Jenks)':'cortes naturales (Jenks)','Rangos técnicos (alerta)':'rangos técnicos de alerta','Cuantiles':'cuantiles'}[E.metodo];
+  cont.innerHTML=`<b>Número total de eventos registrados</b> · ${nomMet}<br>${items}`;
+}
+function puntosFiltrados(){ const pts=[];
+  for(let i=0;i<D.n;i++){ if(maskBase[i]&&geoOK(i)) pts.push(i); } return pts; }
+function mapaDepartamental(){
+  const pts=puntosFiltrados();
+  const munis=munsPorDep.get(E.depto)||[];
+  // heat
+  if(pts.length){ const heat=pts.map(i=>[D.LAT[i],D.LON[i],1]);
+    capaCalor=L.heatLayer(heat,{radius:12,blur:18,minOpacity:.3}).addTo(mapa); }
+  // municipios
+  if(munis.length){ capaMunis=L.geoJSON({type:'FeatureCollection',features:munis},
+    {style:{color:'#9aa6b2',weight:1,fillColor:'#fff',fillOpacity:.01,dashArray:'3'},
+     onEachFeature:(f,l)=>{ l.bindTooltip(f.properties.MpNombre,{sticky:true});
+       l.on('mouseover',()=>l.setStyle({color:'#1f3b57',weight:2,fillOpacity:.08}));
+       l.on('mouseout',()=>l.setStyle({color:'#9aa6b2',weight:1,fillOpacity:.01})); }}).addTo(mapa);
+    try{ mapa.fitBounds(capaMunis.getBounds(),{padding:[20,20]}); }catch(e){} }
+  $('#leyendaMapa').innerHTML='<b>Densidad de incendios</b>: concentración de eventos por zona (azul=baja → rojo=alta).';
+}
+function contornoDe(features){ return L.geoJSON({type:'FeatureCollection',features},
+  {style:{color:'#1f3b57',weight:3,fillOpacity:0}}); }
+function mapaMunicipal(){
+  const pts=puntosFiltrados();
+  const muniFeat=(munsPorDep.get(E.depto)||[]).filter(f=>Number(f.properties.MpCodigo)===E.muni);
+  if(muniFeat.length){ capaContorno=contornoDe(muniFeat).addTo(mapa);
+    try{ mapa.fitBounds(capaContorno.getBounds(),{padding:[30,30]}); }catch(e){} }
+  else if(pts.length){ mapa.setView([D.LAT[pts[0]],D.LON[pts[0]]],11); }
+  if(E.vis==='Mapa de calor'){
+    if(pts.length) capaCalor=L.heatLayer(pts.map(i=>[D.LAT[i],D.LON[i],1]),{radius:12,blur:18,minOpacity:.3}).addTo(mapa);
+    $('#leyendaMapa').innerHTML='<b>Densidad de incendios</b> en el municipio (azul=baja → rojo=alta).';
+  } else {
+    const agrupar=(E.vis==='Puntos agrupados');
+    const cont = agrupar ? (capaCluster=L.markerClusterGroup({chunkedLoading:true,maxClusterRadius:50})) : (capaPuntos=L.layerGroup());
+    const marks=[];
+    pts.forEach(i=>{ const col=COLOR_CONF[D.CONF[i]]||'#95a5a6';
+      const r=4+(D.AREA[i]>0?Math.sqrt(D.AREA[i])/4:0);
+      const mk=L.circleMarker([D.LAT[i],D.LON[i]],{radius:Math.min(r,18),color:col,fillColor:col,fillOpacity:.7,weight:1});
+      mk.bindTooltip(`Confianza: ${(D.CONF[i]/10).toFixed(1)} · Área: ${fmt1(D.AREA[i])} ha · Focos: ${D.NF[i]}`);
+      marks.push(mk); });
+    if(agrupar){ cont.addLayers(marks); } else { marks.forEach(m=>m.addTo(cont)); }
+    cont.addTo(mapa);
+    // leyenda puntos
+    const items=ORDEN_CONF.filter(c=>confsActivas().has(c)).map(c=>
+      `<span class="it"><span class="sw" style="width:13px;height:13px;border-radius:50%;background:${COLOR_CONF[c]}"></span>${ETIQ_CONF[c]}</span>`).join('');
+    $('#leyendaMapa').innerHTML=`<b>Cada punto es un incendio.</b> Color = confianza; tamaño ∝ área quemada.<br>${items}`;
+  }
+}
+function irADepto(cd){
+  E.nivel='Departamental'; E.depto=cd; E.muni=null;
+  document.querySelector('input[name=nivel][value=Departamental]').checked=true;
+  sincronizarSelectores(); actualizar();
+}
+
+/* ====================== SELECTORES ====================== */
+function deptosDisponibles(){
+  const s=new Set();
+  for(let i=0;i<D.n;i++){ if(maskBase[i] && D.CD[i] && nomDep.has(D.CD[i])) s.add(D.CD[i]); }
+  return [...s].sort((a,b)=>(nomDep.get(a)||'').localeCompare(nomDep.get(b)||'','es'));
+}
+function munisDisponibles(cd){
+  const s=new Set();
+  for(let i=0;i<D.n;i++){ if(maskBase[i] && D.CD[i]===cd && D.CM[i] && nomMun.has(D.CM[i])) s.add(D.CM[i]); }
+  return [...s].sort((a,b)=>(nomMun.get(a)||'').localeCompare(nomMun.get(b)||'','es'));
+}
+function sincronizarSelectores(){
+  $('#ctlDepto').classList.toggle('oculto', E.nivel==='Nacional');
+  $('#ctlMuni').classList.toggle('oculto', E.nivel!=='Municipal');
+  $('#ctlMetodo').classList.toggle('oculto', E.nivel!=='Nacional');
+  $('#ctlVis').classList.toggle('oculto', E.nivel!=='Municipal');
+  if(E.nivel!=='Nacional'){
+    const deps=deptosDisponibles();
+    if(!deps.includes(E.depto)) E.depto=deps[0]??null;
+    const sd=$('#selDepto'); sd.innerHTML=deps.map(c=>`<option value="${c}" ${c===E.depto?'selected':''}>${nomDep.get(c)}</option>`).join('');
+  }
+  if(E.nivel==='Municipal' && E.depto!=null){
+    const mun=munisDisponibles(E.depto);
+    if(!mun.includes(E.muni)) E.muni=mun[0]??null;
+    const sm=$('#selMuni'); sm.innerHTML=mun.map(c=>`<option value="${c}" ${c===E.muni?'selected':''}>${nomMun.get(c)}</option>`).join('');
+  }
+}
+
+/* ====================== ORQUESTA ====================== */
+function etiquetaPeriodo(){ const a=yyyymmdd_a_iso(E.fIni).split('-').reverse().join('/'),
+  b=yyyymmdd_a_iso(E.fFin).split('-').reverse().join('/'); return a===b?a:`${a} – ${b}`; }
+function pintarTitulo(){
+  let t;
+  if(E.nivel==='Nacional') t=`Vista nacional · ${etiquetaPeriodo()}`;
+  else if(E.nivel==='Departamental') t=`${nomDep.get(E.depto)||''} · ${etiquetaPeriodo()}`;
+  else t=`${nomMun.get(E.muni)||''} (${nomDep.get(E.depto)||''}) · ${etiquetaPeriodo()}`;
+  $('#tituloZona').textContent=t;
+}
+function actualizar(){
+  calcularMascara();
+  sincronizarSelectores();
+  pintarTitulo();
+  $('#explicaMetodo').textContent = E.nivel==='Nacional' ? (EXPLICA[E.metodo]||'') : '';
+  pintarKPIs();
+  actualizarMapa();
+  gConfianza(); gMes(); gDia(); gAnual(); gTops();
+  seccionRiesgo();
+  pintarTabla();
+}
+
+/* ====================== PDF ====================== */
+async function generarPDF(){
+  const btn=$('#btnPDF'); const prev=btn.textContent; btn.textContent='Generando…'; btn.disabled=true;
+  try{
+    const { jsPDF } = window.jspdf;
+    const cont=$('#contenido');
+    const canvas=await html2canvas(cont,{scale:1.4,backgroundColor:'#ffffff',useCORS:true,
+      windowWidth:cont.scrollWidth,ignoreElements:el=>el.classList&&el.classList.contains('leaflet-control-zoom')});
+    const doc=new jsPDF({unit:'mm',format:'a4'});
+    const PW=210, PH=297, MG=10, cw=PW-2*MG;
+    // encabezado simple
+    doc.setFillColor(31,59,87); doc.rect(0,0,PW,16,'F');
+    doc.setTextColor(255); doc.setFontSize(12); doc.setFont('helvetica','bold');
+    doc.text('Incendios Forestales · Colombia — UNGRD', MG, 10);
+    doc.setFontSize(8); doc.setFont('helvetica','normal');
+    doc.text(`${$('#tituloZona').textContent}`, MG, 14);
+    const imgW=cw, imgH=canvas.height*imgW/canvas.width;
+    let y=20, restante=imgH, sy=0;
+    const pagUtil=PH-20-8;
+    while(restante>0){
+      const hPag=Math.min(pagUtil, restante);
+      const sliceH=hPag*canvas.width/imgW;
+      const cv=document.createElement('canvas'); cv.width=canvas.width; cv.height=sliceH;
+      cv.getContext('2d').drawImage(canvas,0,sy,canvas.width,sliceH,0,0,canvas.width,sliceH);
+      doc.addImage(cv.toDataURL('image/jpeg',0.9),'JPEG',MG,y,imgW,hPag);
+      doc.setFontSize(7); doc.setTextColor(120);
+      doc.text('Fuente: OroraTech WFS · Límites: DIVIPOLA–DANE · UNGRD – SCR', MG, PH-5);
+      restante-=hPag; sy+=sliceH;
+      if(restante>0.5){ doc.addPage(); y=14; }
+    }
+    doc.save(`Reporte_Incendios_${new Date().toISOString().slice(0,10)}.pdf`);
+  }catch(e){ alert('No se pudo generar el PDF: '+e.message); }
+  finally{ btn.textContent=prev; btn.disabled=false; }
+}
+
+/* ====================== CONTROLES UI ====================== */
+function construirControles(){
+  // años
+  const anios=[...new Set(Array.from(D.YR))].sort((a,b)=>b-a);
+  $('#selAnio').innerHTML='<option value="Todos">Todos los años</option>'+anios.map(a=>`<option value="${a}">${a}</option>`).join('');
+  // rango inicial = todo
+  E.fIni=F_MIN; E.fFin=F_MAX;
+  $('#fIni').min=$('#fFin').min=yyyymmdd_a_iso(F_MIN);
+  $('#fIni').max=$('#fFin').max=yyyymmdd_a_iso(F_MAX);
+  $('#fIni').value=yyyymmdd_a_iso(F_MIN); $('#fFin').value=yyyymmdd_a_iso(F_MAX);
+  // chips confianza
+  const cc=$('#chipsConf');
+  cc.innerHTML=[2,4,6,8,10].map(c=>`<label class="chip ${E.confs.has(c)?'on':''}" data-c="${c}">
+    <span class="dot" style="background:${COLOR_CONF[c]}"></span>${ETIQ_CONF[c]}</label>`).join('');
+  cc.querySelectorAll('.chip').forEach(ch=>ch.addEventListener('click',()=>{
+    const c=+ch.dataset.c; if(E.confs.has(c)) E.confs.delete(c); else E.confs.add(c);
+    if(E.confs.size===0) E.confs.add(c);  // nunca vacío
+    ch.classList.toggle('on',E.confs.has(c)); actualizar();
+  }));
+
+  // eventos
+  $('#selAnio').addEventListener('change',e=>{
+    E.anio=e.target.value;
+    if(E.anio==='Todos'){ E.fIni=F_MIN; E.fFin=F_MAX; }
+    else{ const a=+E.anio; E.fIni=Math.max(F_MIN,a*10000+101); E.fFin=Math.min(F_MAX,a*10000+1231); }
+    $('#fIni').value=yyyymmdd_a_iso(E.fIni); $('#fFin').value=yyyymmdd_a_iso(E.fFin);
+    actualizar();
+  });
+  $('#fIni').addEventListener('change',e=>{ E.fIni=iso_a_yyyymmdd(e.target.value); actualizar(); });
+  $('#fFin').addEventListener('change',e=>{ E.fFin=iso_a_yyyymmdd(e.target.value); actualizar(); });
+  document.querySelectorAll('input[name=nivel]').forEach(r=>r.addEventListener('change',e=>{ E.nivel=e.target.value; actualizar(); }));
+  $('#selDepto').addEventListener('change',e=>{ E.depto=+e.target.value; E.muni=null; actualizar(); });
+  $('#selMuni').addEventListener('change',e=>{ E.muni=+e.target.value; actualizar(); });
+  $('#chkInsuf').addEventListener('change',e=>{ E.insuf=e.target.checked; actualizar(); });
+  $('#segMetodo').querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>{
+    $('#segMetodo').querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed','false'));
+    b.setAttribute('aria-pressed','true'); E.metodo=b.dataset.m; actualizar();
+  }));
+  $('#segVis').querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>{
+    $('#segVis').querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed','false'));
+    b.setAttribute('aria-pressed','true'); E.vis=b.dataset.v; actualizar();
+  }));
+  $('#btnPDF').addEventListener('click',generarPDF);
+  $('#btnCSV').addEventListener('click',descargarCSV);
+}
+
+/* ====================== INICIO ====================== */
+(async function(){
+  if(new URLSearchParams(location.search).get('embed')==='1') document.documentElement.classList.add('embed');
+  try{
+    initMapa();
+    await cargar();
+    construirControles();
+    actualizar();
+    $('#cargando').style.display='none';
+    setTimeout(()=>mapa.invalidateSize(),200);
+  }catch(e){
+    $('#cargando-msg').textContent='Error al cargar: '+e.message;
+    console.error(e);
+  }
+})();
+</script>
+</body>
+</html>

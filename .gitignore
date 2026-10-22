@@ -1,0 +1,40 @@
+# ─────────────────────────────────────────────────────────────
+#  .gitignore — portal estático para GitHub Pages
+#  (los datos de data/** SÍ se publican; se excluyen temporales,
+#   secretos y artefactos de desarrollo)
+# ─────────────────────────────────────────────────────────────
+
+# --- Secretos / credenciales (NUNCA publicar) ---
+.env
+.env.*
+*.key
+*.pem
+**/secrets*
+**/*secret*
+
+# --- Reportes PDF de muestra / temporales ---
+Reporte_*.pdf
+*.tmp
+*.bak
+*.log
+
+# --- Pruebas locales ---
+_test_*.html
+
+# --- Python (por el build local generar_datos.py) ---
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# --- Sistema / editores ---
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+*~
+*.swp
+
+# --- Node (solo si se usan herramientas locales) ---
+node_modules/
