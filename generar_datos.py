@@ -29,6 +29,8 @@ USO:
 ============================================================================
 """
 
+import json
+import math
 import shutil
 from pathlib import Path
 
@@ -44,6 +46,65 @@ F_DEPTOS_SRC = ORIGEN / "departamentos_simplificado.geojson"
 F_MUNIS_SRC = ORIGEN / "municipios_simplificado.geojson"
 
 DIR_OUT = RAIZ / "data" / "wfs"
+
+
+# ----------------------------------------------------------------------
+# AREA GEODESICA (ha) de poligonos GeoJSON en lon/lat, sin dependencias.
+# Formula de area esferica; suficiente para densidad y % (limites ya
+# simplificados). R = radio WGS84.
+# ----------------------------------------------------------------------
+_R = 6378137.0
+
+def _area_anillo_m2(coords):
+    n = len(coords)
+    if n < 3:
+        return 0.0
+    tot = 0.0
+    for i in range(n):
+        lon1, lat1 = coords[i][0], coords[i][1]
+        lon2, lat2 = coords[(i + 1) % n][0], coords[(i + 1) % n][1]
+        tot += math.radians(lon2 - lon1) * (
+            2 + math.sin(math.radians(lat1)) + math.sin(math.radians(lat2)))
+    return abs(tot * _R * _R / 2.0)
+
+def _area_geom_ha(geom):
+    if not geom:
+        return 0.0
+    t = geom.get("type"); c = geom.get("coordinates") or []
+    a = 0.0
+    if t == "Polygon":
+        if c:
+            a = _area_anillo_m2(c[0]) - sum(_area_anillo_m2(r) for r in c[1:])
+    elif t == "MultiPolygon":
+        for poly in c:
+            if poly:
+                a += _area_anillo_m2(poly[0]) - sum(_area_anillo_m2(r) for r in poly[1:])
+    return a / 10000.0
+
+def generar_areas(dir_out):
+    """Calcula area (ha) por municipio y departamento desde los GeoJSON y la
+    guarda en areas.json (lo usan el treemap, el registro y el gauge)."""
+    f_dep = dir_out / "departamentos_simplificado.geojson"
+    f_mun = dir_out / "municipios_simplificado.geojson"
+    areas = {"muni": {}, "depto": {}}
+    def _k(v):   # clave normalizada a entero-texto (sin ceros a la izquierda),
+        try:     # para que coincida con String(cod) del visor (cod es int)
+            return str(int(v))
+        except Exception:
+            return str(v)
+    if f_mun.exists():
+        gj = json.load(open(f_mun, encoding="utf-8"))
+        for ft in gj["features"]:
+            areas["muni"][_k(ft["properties"].get("MpCodigo"))] = round(_area_geom_ha(ft["geometry"]), 1)
+    if f_dep.exists():
+        gj = json.load(open(f_dep, encoding="utf-8"))
+        for ft in gj["features"]:
+            areas["depto"][_k(ft["properties"].get("DeCodigo"))] = round(_area_geom_ha(ft["geometry"]), 1)
+    f_out = dir_out / "areas.json"
+    json.dump(areas, open(f_out, "w", encoding="utf-8"),
+              ensure_ascii=False, separators=(",", ":"))
+    print(f">> {f_out.name}: {len(areas['muni'])} municipios, "
+          f"{len(areas['depto'])} deptos · {f_out.stat().st_size/1e3:.0f} KB")
 
 
 def _cod_int(serie, ndig):
@@ -124,6 +185,9 @@ def main():
             print(f">> copiado {dst.name}: {dst.stat().st_size/1e6:.1f} MB")
         else:
             print(f"[aviso] no existe {src_gj}")
+
+    # --- Areas (ha) por municipio/departamento para densidad y % ---
+    generar_areas(DIR_OUT)
 
     print(f"\n>> Listo. Salida en: {DIR_OUT}")
 
