@@ -807,6 +807,8 @@ function initMapa(){
   baseEsri=L.tileLayer(ESRI,{attribution:'Tiles &copy; Esri',maxZoom:16,crossOrigin:'anonymous'}).addTo(mapa);
   baseOSM=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'&copy; OpenStreetMap',maxZoom:19});
   L.control.layers({'Gris claro (Esri)':baseEsri,'OpenStreetMap':baseOSM},null,{position:'topright'}).addTo(mapa);
+  // Re-declutter de etiquetas de departamento al cambiar el zoom
+  mapa.on('zoomend', ()=>{ if(E.nivel==='Nacional') pintarEtiquetasDep(); });
 }
 function limpiarCapas(){
   [capaChoro,capaMunis,capaContorno,capaCalor,capaPuntos,capaCluster,capaLabels].forEach(c=>{ if(c){ mapa.removeLayer(c); } });
@@ -845,16 +847,33 @@ function mapaNacional(){
       layer.on('mouseout',()=>layer.setStyle({weight:1,color:'#ffffff'}));
       layer.on('click',()=>{ const cd=Number(f.properties.DeCodigo); if(nomDep.has(cd)){ irADepto(cd); } });
     }}).addTo(mapa);
-  // Etiquetas con el nombre de cada departamento
+  mapa.setView([4.6,-74.1],5.3);
+  pintarEtiquetasDep();
+  leyendaChoro(cortes,usaBins);
+}
+// Etiquetas de departamento con anti-solapamiento: prioriza los más grandes
+// (por área) y omite los que chocarían a la escala actual; al hacer zoom
+// aparecen las omitidas (se re-dibuja en 'zoomend').
+function pintarEtiquetasDep(){
+  if(!mapa || !gjDep) return;
+  if(capaLabels){ mapa.removeLayer(capaLabels); capaLabels=null; }
+  if(E.nivel!=='Nacional') return;
   capaLabels=L.layerGroup();
+  const cand=[];
   gjDep.features.forEach(f=>{ const cd=Number(f.properties.DeCodigo); if(cd===0) return;
     const c=centroideAprox(f.geometry); if(!c) return;
-    L.marker(c,{interactive:false, keyboard:false, icon:L.divIcon({className:'',iconSize:[0,0],iconAnchor:[0,0],
-      html:`<div class="map-lbl-dep">${f.properties.DeNombre}</div>`})}).addTo(capaLabels);
+    const nom=f.properties.DeNombre;
+    cand.push({nom, ll:L.latLng(c[0],c[1]), area:AREAS.depto[String(cd)]||0, w:nom.length*5.9+6}); });
+  cand.sort((a,b)=>b.area-a.area);                   // mayores primero
+  const puestos=[];
+  cand.forEach(o=>{ const p=mapa.latLngToContainerPoint(o.ll);
+    const choca=puestos.some(q=>Math.abs(q.x-p.x) < (q.w+o.w)/2 && Math.abs(q.y-p.y) < 15);
+    if(choca) return;
+    puestos.push({x:p.x,y:p.y,w:o.w});
+    L.marker(o.ll,{interactive:false,keyboard:false,icon:L.divIcon({className:'',iconSize:[0,0],iconAnchor:[0,0],
+      html:`<div class="map-lbl-dep">${o.nom}</div>`})}).addTo(capaLabels);
   });
   capaLabels.addTo(mapa);
-  mapa.setView([4.6,-74.1],5.3);
-  leyendaChoro(cortes,usaBins);
 }
 function leyendaChoro(cortes,usaBins){
   const cont=$('#leyendaMapa'); if(!usaBins||cortes.length<3){ cont.innerHTML=''; return; }
