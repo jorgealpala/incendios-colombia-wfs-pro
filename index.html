@@ -889,8 +889,10 @@ async function generarPDF(){
   const btn=$('#btnPDF'); const prev=btn.textContent; btn.textContent='Generando…'; btn.disabled=true;
   try{
     const { jsPDF } = window.jspdf;
-    const doc=new jsPDF({unit:'mm',format:'a4'});
-    const PW=210, PH=297, MG=10, cw=PW-2*MG, TOP=20, BOT=12, maxH=PH-TOP-BOT;
+    // A4 HORIZONTAL (apaisado): aprovecha el ancho para 2 gráficas por fila.
+    const doc=new jsPDF({unit:'mm',format:'a4',orientation:'landscape'});
+    const PW=297, PH=210, MG=10, TOP=20, BOT=12;
+    const full=PW-2*MG, gap=6, half=(full-gap)/2, maxH=PH-TOP-BOT;
     const encabezado=()=>{ doc.setFillColor(31,59,87); doc.rect(0,0,PW,16,'F');
       doc.setTextColor(255); doc.setFont('helvetica','bold'); doc.setFontSize(12);
       doc.text('Incendios Forestales - Colombia | UNGRD', MG, 10);
@@ -898,7 +900,26 @@ async function generarPDF(){
       doc.text(textoLimpio($('#tituloZona').textContent), MG, 14); doc.setTextColor(0); };
     const pie=()=>{ doc.setFontSize(7); doc.setTextColor(120);
       doc.text('Fuente: OroraTech WFS - Limites: DIVIPOLA-DANE - UNGRD - SCR', MG, PH-5); doc.setTextColor(0); };
-    encabezado(); let y=TOP;
+    encabezado(); let y=TOP; let pend=null;   // pend = bloque angosto esperando compañero (columna izq.)
+
+    const salto=h=>{ if(y+h>PH-BOT){ doc.addPage(); y=14; } };
+    const flush=()=>{ if(pend){ salto(pend.h); doc.addImage(pend.data,'JPEG',MG,y,pend.w,pend.h); y+=pend.h+4; pend=null; } };
+    const addFull=(canvas,capH)=>{ flush(); let w=full,h=canvas.height*w/canvas.width;
+      const lim=Math.min(maxH, capH||maxH);
+      if(h>lim){ h=lim; w=canvas.width*h/canvas.height; } salto(h);
+      doc.addImage(canvas.toDataURL('image/jpeg',.92),'JPEG',MG+(full-w)/2,y,w,h); y+=h+4; };
+    const addHalf=(canvas)=>{ let w=half,h=canvas.height*w/canvas.width;
+      if(h>maxH){ h=maxH; w=canvas.width*h/canvas.height; }
+      const data=canvas.toDataURL('image/jpeg',.92);
+      if(!pend){ pend={data,w,h}; }                 // reservar columna izquierda
+      else{ const rowH=Math.max(pend.h,h); salto(rowH);   // colocar el par
+        doc.addImage(pend.data,'JPEG',MG,y,pend.w,pend.h);
+        doc.addImage(data,'JPEG',MG+half+gap,y,w,h); y+=rowH+4; pend=null; } };
+    const addTexto=(txt,bold,size,color,italic)=>{ flush();
+      doc.setFont('helvetica',italic?'italic':(bold?'bold':'normal')); doc.setFontSize(size);
+      const lines=doc.splitTextToSize(txt,full), hh=lines.length*(size*0.42)+3; salto(hh);
+      doc.setTextColor(...(color||[0,0,0])); lines.forEach(ln=>{ y+=size*0.42; doc.text(ln,MG,y); });
+      doc.setTextColor(0); doc.setFont('helvetica','normal'); y+=3; };
 
     const cont=$('#contenido');
     // html2canvas NO captura los <canvas> de Chart.js: los sustituimos por una
@@ -908,48 +929,35 @@ async function generarPDF(){
       const img=document.createElement('img'); img.src=ch.toBase64Image('image/png',1);
       img.style.width=cv.clientWidth+'px'; img.style.height=cv.clientHeight+'px'; img.style.display='block';
       cv.style.display='none'; cv.parentNode.insertBefore(img,cv); swaps.push({cv,img}); });
-    await new Promise(r=>setTimeout(r,60));   // dar un tick para pintar las imágenes
+    await new Promise(r=>setTimeout(r,60));
 
     const nodos=[...cont.querySelectorAll('#kpis, #mapa, #leyendaMapa, .seccion-tit, #notaParcial, .card, #tblEventos')];
     try{
     for(const node of nodos){
-      if(!node.offsetHeight) continue;                 // saltar ocultos
-      // --- títulos de sección / notas como texto ---
-      if(node.classList.contains('seccion-tit')){
-        if(y+12>PH-BOT){ doc.addPage(); y=14; }
-        doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(31,59,87);
-        doc.text(textoLimpio(node.textContent), MG, y+5); doc.setTextColor(0); y+=9; continue;
-      }
-      if(node.id==='notaParcial'){
-        const t=textoLimpio(node.textContent); if(!t) continue;
-        if(y+8>PH-BOT){ doc.addPage(); y=14; }
-        doc.setFont('helvetica','italic'); doc.setFontSize(8); doc.setTextColor(120);
-        doc.splitTextToSize(t,cw).forEach(ln=>{ doc.text(ln,MG,y+3); y+=4; });
-        doc.setTextColor(0); doc.setFont('helvetica','normal'); y+=2; continue;
-      }
-      // --- bloques gráficos: la tabla de eventos se recorta a 20 filas ---
+      if(!node.offsetHeight) continue;
+      if(node.classList.contains('seccion-tit')){ addTexto(textoLimpio(node.textContent),true,12,[31,59,87]); continue; }
+      if(node.id==='notaParcial'){ const t=textoLimpio(node.textContent); if(t) addTexto(t,false,8,[120,120,120],true); continue; }
+      // tabla de eventos: recortar a 20 filas
       let elCap=node, temp=null;
-      if(node.id==='tblEventos'){
-        temp=node.cloneNode(true);
+      if(node.id==='tblEventos'){ temp=node.cloneNode(true);
         const tb=temp.querySelector('tbody'); if(tb)[...tb.rows].slice(20).forEach(r=>r.remove());
         temp.style.cssText=`position:absolute;left:-9999px;top:0;width:${node.offsetWidth}px;background:#fff`;
-        document.body.appendChild(temp); elCap=temp;
-      }
-      let canvas;
-      try{ canvas=await capturar(elCap); } finally{ if(temp) document.body.removeChild(temp); }
-      let imgW=cw, imgH=canvas.height*imgW/canvas.width;
-      // si el bloque es más alto que una página, se reduce para caber COMPLETO
-      // (nunca se parte una gráfica); se centra horizontalmente.
-      if(imgH>maxH){ imgH=maxH; imgW=canvas.width*imgH/canvas.height; }
-      if(y+imgH>PH-BOT){ doc.addPage(); y=14; }
-      const x=MG+(cw-imgW)/2;
-      doc.addImage(canvas.toDataURL('image/jpeg',0.92),'JPEG',x,y,imgW,imgH); y+=imgH+4;
+        document.body.appendChild(temp); elCap=temp; }
+      let canvas; try{ canvas=await capturar(elCap); } finally{ if(temp) document.body.removeChild(temp); }
+      // bloques ANCHOS (a ancho completo): KPIs, mapa, leyenda, serie diaria,
+      // heatmap de estacionalidad, tablas. El resto (gráficas) van en 2 columnas.
+      const ancho = node.id==='kpis'||node.id==='mapa'||node.id==='leyendaMapa'||node.id==='tblEventos'
+        || (node.querySelector && (node.querySelector('#chDia')||node.querySelector('#heatEstac')||node.querySelector('.tbl')));
+      if(node.id==='mapa') addFull(canvas,122);   // mapa con altura acotada (cabe con KPIs)
+      else if(ancho) addFull(canvas); else addHalf(canvas);
     }
+    flush();
     } finally { swaps.forEach(s=>{ s.img.remove(); s.cv.style.display=''; }); }
     // pie en todas las páginas
     const total=doc.getNumberOfPages();
     for(let p=1;p<=total;p++){ doc.setPage(p); pie();
       doc.setFontSize(7); doc.setTextColor(150); doc.text(`${p}/${total}`, PW-MG-8, PH-5); doc.setTextColor(0); }
+    if(new URLSearchParams(location.search).get('pdfhook')==='1') window.__lastPDF=doc.output('datauristring');
     doc.save(`Reporte_Incendios_${new Date().toISOString().slice(0,10)}.pdf`);
   }catch(e){ alert('No se pudo generar el PDF: '+e.message); console.error(e); }
   finally{ btn.textContent=prev; btn.disabled=false; }

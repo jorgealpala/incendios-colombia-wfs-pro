@@ -78,10 +78,12 @@ Columnas del parquet ligero (`incendios_web.parquet`):
 3. **Mapa (Leaflet)**: coropleta (`L.geoJSON` + clasificación), `L.heatLayer` o `L.circleMarker`/
    `markerCluster` según el nivel; tiles Esri Light Gray.
 4. **Gráficas (Chart.js)**: se reconstruyen con los agregados en cada actualización.
-5. **Reporte PDF**: `generarPDF()` captura **bloque por bloque** con `html2canvas` y pagina a A4
-   sin cortar ninguna gráfica (bloques muy altos se escalan para caber completos). Los `<canvas>`
-   de Chart.js se sustituyen por su imagen (`toBase64Image`) antes de capturar, porque html2canvas
-   no los rasteriza directamente. La tabla de eventos se recorta a 20 filas en el PDF.
+5. **Reporte PDF**: `generarPDF()` captura **bloque por bloque** con `html2canvas` y pagina en
+   **A4 horizontal (apaisado)**, con **2 gráficas por fila** y los bloques anchos (KPIs, mapa,
+   serie diaria, heatmap, tablas) a ancho completo. Ninguna gráfica se parte entre páginas
+   (los bloques muy altos se escalan para caber completos). Los `<canvas>` de Chart.js se
+   sustituyen por su imagen (`toBase64Image`) antes de capturar, porque html2canvas no los
+   rasteriza directamente. La tabla de eventos se recorta a 20 filas en el PDF.
 
 > El mapa base (tiles Esri) puede no aparecer en el PDF; la coropleta/puntos sí, porque se dibujan
 > en el lienzo de Leaflet.
