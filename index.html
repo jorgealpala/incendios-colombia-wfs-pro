@@ -292,7 +292,8 @@ footer ul{margin:6px 0;padding-left:18px}
     </div>
 
     <div class="card" style="margin-top:16px"><h4 id="trimTit">Últimos 6 meses (comparativo por año)</h4>
-      <div class="chart-box"><canvas id="chTrim"></canvas></div>
+      <div class="chips" id="trimAnios" style="margin:2px 0 10px"></div>
+      <div class="chart-box alta"><canvas id="chTrim"></canvas></div>
       <div class="cap" id="trimCap"></div></div>
 
     <div class="card" style="margin-top:16px"><h4>Eventos por día (rango seleccionado)</h4>
@@ -427,7 +428,7 @@ const EXPLICA = {
 const E = {
   anio:'Todos', fIni:0, fFin:0, nivel:'Nacional', depto:null, muni:null,
   confs:new Set(CONF_ALTA), insuf:false, metodo:'Cortes naturales (Jenks)',
-  vis:'Puntos agrupados', treeK:'area', regSort:'area', regDir:-1, regQ:''
+  vis:'Puntos agrupados', treeK:'area', regSort:'area', regDir:-1, regQ:'', trimAnios:new Set()
 };
 let D = null;              // datos compactos (TypedArrays)
 let gjDep=null, gjMun=null;
@@ -602,58 +603,77 @@ function gMes(){
       scales:{x:{grid:{display:false}},y:{beginAtZero:true,grid:{color:'#eef1f4'}}}}});
 }
 
-/* Últimos 6 meses (según la fecha actual) comparados por año. Respeta nivel y
-   confianza; es independiente del rango de fechas (monitor del semestre
-   reciente). Si la ventana cruza fin de año, el año se asigna al de cierre. */
+/* Últimos 6 meses (según la fecha actual) comparados por año. La oscilación es
+   INDEPENDIENTE por año: para cada año y mes se calcula el promedio de eventos
+   por día (línea central) y el rango diario mín–máx del mes (banda sombreada
+   del color del año). Respeta nivel y confianza; independiente del rango de
+   fechas. Si la ventana cruza fin de año, el año se asigna al de cierre. */
 const VENTANA_MESES = 6;
+function colorAlpha(hex,a){ const h=hex.replace('#',''); return `rgba(${parseInt(h.slice(0,2),16)},${parseInt(h.slice(2,4),16)},${parseInt(h.slice(4,6),16)},${a})`; }
 function gTrimestre(){
   const N=VENTANA_MESES;
-  const mEnd=new Date().getMonth()+1;                           // mes actual (1-12)
-  const win=Array.from({length:N},(_,k)=> ((mEnd-(N-1-k)-1+12*2)%12)+1); // N meses, con wrap
+  const mEnd=new Date().getMonth()+1;
+  const win=Array.from({length:N},(_,k)=> ((mEnd-(N-1-k)-1+24)%12)+1);   // N meses, con wrap
   const cs=confsActivas();
-  const porWY={};                                               // añoCierre -> [v0..v(N-1)]
+  // Conteo DIARIO por (añoCierre, posMes): Map(díaIndex -> nº eventos)
+  const diario={};
   for(let i=0;i<D.n;i++){
     const mo=D.MO[i], pos=win.indexOf(mo); if(pos<0) continue;
     if(!cs.has(D.CONF[i]) || !geoOK(i)) continue;
-    const wy = (mo<=mEnd) ? D.YR[i] : D.YR[i]+1;                // año de cierre de la ventana
-    (porWY[wy]=porWY[wy]||new Array(N).fill(0))[pos]++;
+    const wy=(mo<=mEnd)?D.YR[i]:D.YR[i]+1;
+    if(!diario[wy]) diario[wy]=Array.from({length:N},()=>new Map());
+    const mp=diario[wy][pos]; mp.set(D.DI[i], (mp.get(D.DI[i])||0)+1);
   }
-  const labels = win.map(m=>MESES[m-1]);
-  const fmaxYm = Math.floor(F_MAX/100);                         // yyyymm con datos
-  const calYear=(a,m)=> (m<=mEnd)?a:a-1;                        // año calendario de la celda
-  const conDato=(a,m)=> calYear(a,m)*100+m <= fmaxYm;          // ¿hay datos para esa celda?
-  const anios=Object.keys(porWY).map(Number).sort();
-  // Las celdas futuras (mes en curso aún sin datos) van como null: la línea del
-  // año en curso TERMINA en el último mes con datos (no se desploma a 0).
-  const dsYears=anios.map(a=>({label:String(a),
-    data:win.map((m,p)=> conDato(a,m)?porWY[a][p]:null),
-    borderColor:COLOR_ANIO[a]||'#888', backgroundColor:COLOR_ANIO[a]||'#888',
-    tension:.3, pointRadius:3, borderWidth:2, spanGaps:false}));
-  // Envolvente histórica por mes: promedio + banda mín–máx (rango de oscilación)
-  const prom=win.map((m,p)=>{ let s=0,k=0; anios.forEach(a=>{ if(conDato(a,m)){ s+=porWY[a][p]; k++; } }); return k?s/k:0; });
-  const maxData=win.map((m,p)=>{ let b=-Infinity; anios.forEach(a=>{ if(conDato(a,m)) b=Math.max(b,porWY[a][p]); }); return isFinite(b)?b:null; });
-  const minData=win.map((m,p)=>{ let b= Infinity; anios.forEach(a=>{ if(conDato(a,m)) b=Math.min(b,porWY[a][p]); }); return isFinite(b)?b:null; });
-  const GRIS='rgba(110,120,130,0.6)';
-  // La banda va PRIMERO (al fondo): la línea 'máx' se oculta de la leyenda y el
-  // 'mín' rellena hasta la 'máx' (fill:'-1') pintando el área sombreada.
-  const banda=[
-    {label:'maxhide', data:maxData, borderColor:GRIS, borderWidth:1, borderDash:[3,3],
-     pointRadius:2, pointBackgroundColor:GRIS, pointBorderWidth:0, fill:false, tension:.3, spanGaps:false},
-    {label:'Rango mín–máx (histórico)', data:minData, borderColor:GRIS, borderWidth:1, borderDash:[3,3],
-     pointRadius:2, pointBackgroundColor:GRIS, pointBorderWidth:0, fill:'-1',
-     backgroundColor:'rgba(31,59,87,0.08)', tension:.3, spanGaps:false},
-  ];
-  const avg={label:'Promedio',data:prom,borderColor:'#000',borderDash:[6,4],pointRadius:0,borderWidth:1.4};
-  nuevoChart('chTrim',{type:'line',data:{labels,datasets:[...banda,...dsYears,avg]},
+  const labels=win.map(m=>MESES[m-1]);
+  const fmaxYm=Math.floor(F_MAX/100), fmaxY=Math.floor(F_MAX/10000), fmaxM=Math.floor(F_MAX/100)%100, fmaxD=F_MAX%100;
+  const calYear=(wy,m)=>(m<=mEnd)?wy:wy-1;
+  const conDato=(wy,m)=> calYear(wy,m)*100+m <= fmaxYm;
+  const diasMes=(wy,m)=>{ const cy=calYear(wy,m); let dm=new Date(cy,m,0).getDate();
+    if(cy===fmaxY && m===fmaxM) dm=fmaxD; return dm; };      // tope en el último día con datos
+  const anios=Object.keys(diario).map(Number)
+    .filter(a=> E.trimAnios.size===0 || E.trimAnios.has(a)).sort();
+  const bandas=[], centrales=[];
+  anios.forEach(a=>{
+    const cen=[],mn=[],mx=[];
+    win.forEach((m,p)=>{
+      if(!conDato(a,m)){ cen.push(null); mn.push(null); mx.push(null); return; }
+      const mp=diario[a][p], vals=[...mp.values()];
+      const total=vals.reduce((s,v)=>s+v,0), dm=diasMes(a,m);
+      cen.push(dm>0 ? +(total/dm).toFixed(1) : 0);
+      mx.push(vals.length ? Math.max(...vals) : 0);
+      mn.push(mp.size < dm ? 0 : (vals.length ? Math.min(...vals) : 0)); // 0 si hubo días sin eventos
+    });
+    const col=COLOR_ANIO[a]||'#888';
+    // banda (al fondo): máx (oculta) + mín con relleno hasta la máx, en el color del año
+    bandas.push({label:`_mx_${a}`, data:mx, borderColor:colorAlpha(col,.45), borderWidth:1, pointRadius:0, fill:false, tension:.3, spanGaps:false});
+    bandas.push({label:`_bd_${a}`, data:mn, borderColor:colorAlpha(col,.45), borderWidth:1, pointRadius:0, fill:'-1', backgroundColor:colorAlpha(col,.12), tension:.3, spanGaps:false});
+    centrales.push({label:String(a), data:cen, borderColor:col, backgroundColor:col, borderWidth:2.2, pointRadius:3, tension:.3, spanGaps:false});
+  });
+  nuevoChart('chTrim',{type:'line',data:{labels,datasets:[...bandas,...centrales]},
     options:{maintainAspectRatio:false,responsive:true,
-      plugins:{legend:{position:'bottom',labels:{boxWidth:12,font:{size:10},filter:it=>it.text!=='maxhide'}},
-        tooltip:{filter:it=>it.dataset.label!=='maxhide'}},
-      scales:{x:{grid:{display:false}},y:{beginAtZero:true,grid:{color:'#eef1f4'}}}}});
+      plugins:{legend:{position:'bottom',labels:{boxWidth:12,font:{size:10},filter:it=>!it.text.startsWith('_')}},
+        tooltip:{filter:it=>!it.dataset.label.startsWith('_'),
+          callbacks:{label:c=>`${c.dataset.label}: ${c.parsed.y} ev/día (prom.)`}}},
+      scales:{x:{grid:{display:false}},
+        y:{beginAtZero:true,grid:{color:'#eef1f4'},title:{display:true,text:'eventos por día'}}}}});
   const amb = E.nivel==='Nacional'?'nacional':(E.nivel==='Departamental'?(nomDep.get(E.depto)||''):(nomMun.get(E.muni)||''));
-  $('#trimTit').textContent = `Últimos 6 meses (${labels.join(' · ')}) — comparativo por año`;
-  $('#trimCap').textContent = `Compara ${labels.join(', ')} entre años (${amb}). La banda sombreada es el rango `+
-    `histórico mín–máx de cada mes (oscilación); la línea negra punteada es el promedio. Respeta el nivel y la `+
-    `confianza, pero es independiente del rango de fechas; el mes en curso puede estar incompleto.`;
+  $('#trimTit').textContent = `Últimos 6 meses (${labels.join(' · ')}) — oscilación diaria por año`;
+  $('#trimCap').textContent = `Para cada año (${amb}): la línea es el promedio de eventos por día en el mes y la `+
+    `banda sombreada (su color) es el rango diario mín–máx de ese mes. Así la oscilación es independiente por año. `+
+    `Respeta el nivel y la confianza, pero es independiente del rango de fechas.`;
+}
+// Chips para elegir qué años comparar en la gráfica de últimos 6 meses
+function buildTrimChips(){
+  const anios=[...new Set(Array.from(D.YR))].filter(a=>a>=2019).sort((x,y)=>y-x);
+  if(E.trimAnios.size===0) anios.slice(0,2).forEach(a=>E.trimAnios.add(a)); // por defecto: 2 más recientes
+  const cont=$('#trimAnios'); if(!cont) return;
+  cont.innerHTML='<span class="mini" style="margin-right:4px">Años:</span>'+anios.map(a=>
+    `<label class="chip ${E.trimAnios.has(a)?'on':''}" data-a="${a}"><span class="dot" style="background:${COLOR_ANIO[a]||'#888'}"></span>${a}</label>`).join('');
+  cont.querySelectorAll('.chip').forEach(ch=>ch.addEventListener('click',()=>{
+    const a=+ch.dataset.a; if(E.trimAnios.has(a)) E.trimAnios.delete(a); else E.trimAnios.add(a);
+    if(E.trimAnios.size===0) E.trimAnios.add(a);
+    ch.classList.toggle('on',E.trimAnios.has(a)); gTrimestre();
+  }));
 }
 
 function gDia(){
@@ -1422,6 +1442,7 @@ function construirControles(){
   // años
   const anios=[...new Set(Array.from(D.YR))].sort((a,b)=>b-a);
   $('#selAnio').innerHTML='<option value="Todos">Todos los años</option>'+anios.map(a=>`<option value="${a}">${a}</option>`).join('');
+  buildTrimChips();   // chips de años para la gráfica de últimos 6 meses
   // rango inicial = todo
   E.fIni=F_MIN; E.fFin=F_MAX;
   $('#fIni').min=$('#fFin').min=yyyymmdd_a_iso(F_MIN);
