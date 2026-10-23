@@ -57,6 +57,35 @@ El visor lee **un parquet ligero** (`data/wfs/incendios_web.parquet`, ~11 MB, 67
 todo el filtrado (fecha, confianza, nivel geográfico) se hace en memoria con máscaras. No hay
 límite de consultas: GitHub Pages solo sirve archivos estáticos.
 
+Columnas del parquet ligero (`incendios_web.parquet`):
+
+| Col | Tipo | Significado |
+|-----|------|-------------|
+| `f` | int32 | fecha local (Colombia, −5) como `AAAAMMDD` |
+| `cd` | int32 | código de departamento (DIVIPOLA; `11001` = Bogotá) |
+| `cm` | int32 | código de municipio (DIVIPOLA, 5 díg.; `0` = sin clasificar) |
+| `lon`,`lat` | float32 | centroide del evento |
+| `conf` | uint8 | confianza ×10 en 6 niveles (0,2,4,6,8,10) |
+| `area` | float32 | área del evento (ha) |
+| `nf` | uint16 | número de focos |
+
+### Cómo funciona por dentro
+
+1. **Carga única**: `fetch` del parquet + los 2 GeoJSON → `hyparquet` lee las 8 columnas →
+   `compactar()` las vuelca a *TypedArrays* paralelos (incluye día-índice, año y mes precalculados).
+2. **Filtros por máscara**: cada cambio de control recalcula una `Uint8Array` (fecha + confianza)
+   y un predicado geográfico según el nivel; KPIs, mapa y gráficas iteran los arrays aplicando la máscara.
+3. **Mapa (Leaflet)**: coropleta (`L.geoJSON` + clasificación), `L.heatLayer` o `L.circleMarker`/
+   `markerCluster` según el nivel; tiles Esri Light Gray.
+4. **Gráficas (Chart.js)**: se reconstruyen con los agregados en cada actualización.
+5. **Reporte PDF**: `generarPDF()` captura **bloque por bloque** con `html2canvas` y pagina a A4
+   sin cortar ninguna gráfica (bloques muy altos se escalan para caber completos). Los `<canvas>`
+   de Chart.js se sustituyen por su imagen (`toBase64Image`) antes de capturar, porque html2canvas
+   no los rasteriza directamente. La tabla de eventos se recorta a 20 filas en el PDF.
+
+> El mapa base (tiles Esri) puede no aparecer en el PDF; la coropleta/puntos sí, porque se dibujan
+> en el lienzo de Leaflet.
+
 ### Regenerar los datos
 
 El build toma los datos procesados del **proyecto Streamlit original**

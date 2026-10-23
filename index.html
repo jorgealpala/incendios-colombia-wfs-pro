@@ -724,7 +724,7 @@ function descargarCSV(){
 function initMapa(){
   mapa=L.map('mapa',{zoomSnap:.25,preferCanvas:true}).setView([4.6,-74.1],5.3);
   const ESRI='https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}';
-  baseEsri=L.tileLayer(ESRI,{attribution:'Tiles &copy; Esri',maxZoom:16}).addTo(mapa);
+  baseEsri=L.tileLayer(ESRI,{attribution:'Tiles &copy; Esri',maxZoom:16,crossOrigin:'anonymous'}).addTo(mapa);
   baseOSM=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'&copy; OpenStreetMap',maxZoom:19});
   L.control.layers({'Gris claro (Esri)':baseEsri,'OpenStreetMap':baseOSM},null,{position:'topright'}).addTo(mapa);
 }
@@ -873,38 +873,85 @@ function actualizar(){
   pintarTabla();
 }
 
-/* ====================== PDF ====================== */
+/* ====================== PDF ======================
+   Captura BLOQUE POR BLOQUE (mapa, cada tarjeta/gráfica, tablas) y pagina sin
+   cortar un bloque. Un bloque solo se divide si por sí solo excede una página.
+   Así ninguna gráfica queda partida entre páginas.                          */
+function textoLimpio(s){
+  return s.replace(/[\u{1F000}-\u{1FFFF}←-➿️•]/gu,'')
+          .replace(/[–—]/g,'-').trim();
+}
+async function capturar(el){
+  return await html2canvas(el,{scale:2,backgroundColor:'#ffffff',useCORS:true,
+    logging:false,ignoreElements:n=>n.classList&&(n.classList.contains('leaflet-control-zoom')||n.classList.contains('leaflet-control-layers'))});
+}
 async function generarPDF(){
   const btn=$('#btnPDF'); const prev=btn.textContent; btn.textContent='Generando…'; btn.disabled=true;
   try{
     const { jsPDF } = window.jspdf;
-    const cont=$('#contenido');
-    const canvas=await html2canvas(cont,{scale:1.4,backgroundColor:'#ffffff',useCORS:true,
-      windowWidth:cont.scrollWidth,ignoreElements:el=>el.classList&&el.classList.contains('leaflet-control-zoom')});
     const doc=new jsPDF({unit:'mm',format:'a4'});
-    const PW=210, PH=297, MG=10, cw=PW-2*MG;
-    // encabezado simple
-    doc.setFillColor(31,59,87); doc.rect(0,0,PW,16,'F');
-    doc.setTextColor(255); doc.setFontSize(12); doc.setFont('helvetica','bold');
-    doc.text('Incendios Forestales · Colombia — UNGRD', MG, 10);
-    doc.setFontSize(8); doc.setFont('helvetica','normal');
-    doc.text(`${$('#tituloZona').textContent}`, MG, 14);
-    const imgW=cw, imgH=canvas.height*imgW/canvas.width;
-    let y=20, restante=imgH, sy=0;
-    const pagUtil=PH-20-8;
-    while(restante>0){
-      const hPag=Math.min(pagUtil, restante);
-      const sliceH=hPag*canvas.width/imgW;
-      const cv=document.createElement('canvas'); cv.width=canvas.width; cv.height=sliceH;
-      cv.getContext('2d').drawImage(canvas,0,sy,canvas.width,sliceH,0,0,canvas.width,sliceH);
-      doc.addImage(cv.toDataURL('image/jpeg',0.9),'JPEG',MG,y,imgW,hPag);
-      doc.setFontSize(7); doc.setTextColor(120);
-      doc.text('Fuente: OroraTech WFS · Límites: DIVIPOLA–DANE · UNGRD – SCR', MG, PH-5);
-      restante-=hPag; sy+=sliceH;
-      if(restante>0.5){ doc.addPage(); y=14; }
+    const PW=210, PH=297, MG=10, cw=PW-2*MG, TOP=20, BOT=12, maxH=PH-TOP-BOT;
+    const encabezado=()=>{ doc.setFillColor(31,59,87); doc.rect(0,0,PW,16,'F');
+      doc.setTextColor(255); doc.setFont('helvetica','bold'); doc.setFontSize(12);
+      doc.text('Incendios Forestales - Colombia | UNGRD', MG, 10);
+      doc.setFont('helvetica','normal'); doc.setFontSize(8);
+      doc.text(textoLimpio($('#tituloZona').textContent), MG, 14); doc.setTextColor(0); };
+    const pie=()=>{ doc.setFontSize(7); doc.setTextColor(120);
+      doc.text('Fuente: OroraTech WFS - Limites: DIVIPOLA-DANE - UNGRD - SCR', MG, PH-5); doc.setTextColor(0); };
+    encabezado(); let y=TOP;
+
+    const cont=$('#contenido');
+    // html2canvas NO captura los <canvas> de Chart.js: los sustituimos por una
+    // imagen (nativa de Chart.js, alta resolución) y las restauramos al final.
+    const swaps=[];
+    cont.querySelectorAll('canvas').forEach(cv=>{ const ch=charts[cv.id]; if(!ch) return;
+      const img=document.createElement('img'); img.src=ch.toBase64Image('image/png',1);
+      img.style.width=cv.clientWidth+'px'; img.style.height=cv.clientHeight+'px'; img.style.display='block';
+      cv.style.display='none'; cv.parentNode.insertBefore(img,cv); swaps.push({cv,img}); });
+    await new Promise(r=>setTimeout(r,60));   // dar un tick para pintar las imágenes
+
+    const nodos=[...cont.querySelectorAll('#kpis, #mapa, #leyendaMapa, .seccion-tit, #notaParcial, .card, #tblEventos')];
+    try{
+    for(const node of nodos){
+      if(!node.offsetHeight) continue;                 // saltar ocultos
+      // --- títulos de sección / notas como texto ---
+      if(node.classList.contains('seccion-tit')){
+        if(y+12>PH-BOT){ doc.addPage(); y=14; }
+        doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(31,59,87);
+        doc.text(textoLimpio(node.textContent), MG, y+5); doc.setTextColor(0); y+=9; continue;
+      }
+      if(node.id==='notaParcial'){
+        const t=textoLimpio(node.textContent); if(!t) continue;
+        if(y+8>PH-BOT){ doc.addPage(); y=14; }
+        doc.setFont('helvetica','italic'); doc.setFontSize(8); doc.setTextColor(120);
+        doc.splitTextToSize(t,cw).forEach(ln=>{ doc.text(ln,MG,y+3); y+=4; });
+        doc.setTextColor(0); doc.setFont('helvetica','normal'); y+=2; continue;
+      }
+      // --- bloques gráficos: la tabla de eventos se recorta a 20 filas ---
+      let elCap=node, temp=null;
+      if(node.id==='tblEventos'){
+        temp=node.cloneNode(true);
+        const tb=temp.querySelector('tbody'); if(tb)[...tb.rows].slice(20).forEach(r=>r.remove());
+        temp.style.cssText=`position:absolute;left:-9999px;top:0;width:${node.offsetWidth}px;background:#fff`;
+        document.body.appendChild(temp); elCap=temp;
+      }
+      let canvas;
+      try{ canvas=await capturar(elCap); } finally{ if(temp) document.body.removeChild(temp); }
+      let imgW=cw, imgH=canvas.height*imgW/canvas.width;
+      // si el bloque es más alto que una página, se reduce para caber COMPLETO
+      // (nunca se parte una gráfica); se centra horizontalmente.
+      if(imgH>maxH){ imgH=maxH; imgW=canvas.width*imgH/canvas.height; }
+      if(y+imgH>PH-BOT){ doc.addPage(); y=14; }
+      const x=MG+(cw-imgW)/2;
+      doc.addImage(canvas.toDataURL('image/jpeg',0.92),'JPEG',x,y,imgW,imgH); y+=imgH+4;
     }
+    } finally { swaps.forEach(s=>{ s.img.remove(); s.cv.style.display=''; }); }
+    // pie en todas las páginas
+    const total=doc.getNumberOfPages();
+    for(let p=1;p<=total;p++){ doc.setPage(p); pie();
+      doc.setFontSize(7); doc.setTextColor(150); doc.text(`${p}/${total}`, PW-MG-8, PH-5); doc.setTextColor(0); }
     doc.save(`Reporte_Incendios_${new Date().toISOString().slice(0,10)}.pdf`);
-  }catch(e){ alert('No se pudo generar el PDF: '+e.message); }
+  }catch(e){ alert('No se pudo generar el PDF: '+e.message); console.error(e); }
   finally{ btn.textContent=prev; btn.disabled=false; }
 }
 
