@@ -1,4 +1,4 @@
-# 🔥 Incendios Forestales · Colombia — Visor HTML (v2)
+# 🔥 Incendios Forestales · Colombia — Visor HTML (pro)
 
 Visor **100 % estático en HTML/JS** de incendios forestales en Colombia, con datos de
 **OroraTech WildFire Solution (WFS)**. Es la versión sin **Streamlit** del dashboard
@@ -24,14 +24,14 @@ Todo el procesamiento ocurre **en el navegador**: no hay backend ni base de dato
 - **Análisis para gestión del riesgo**: recurrencia estacional, mapa de calor de estacionalidad
   (municipio × mes), municipios reincidentes y distribución histórica por mes.
 - **Filtros**: rango de fechas, año, nivel de confianza (chips).
-- **Reporte PDF** (de la vista actual) y **descarga CSV** de la tabla.
+- **Reporte PDF** institucional estructurado (según el nivel y filtros en pantalla) y **descarga CSV** de la tabla.
 
 ---
 
 ## Estructura
 
 ```
-incendios-colombia-wfs-v2/
+incendios-colombia-wfs-pro/
 ├── index.html         # El visor completo (autocontenido: HTML + CSS + JS)
 ├── generar_datos.py   # Build: genera data/wfs/ desde el proyecto Streamlit original
 ├── .nojekyll          # GitHub Pages: servir los archivos tal cual

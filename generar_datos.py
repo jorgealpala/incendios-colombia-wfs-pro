@@ -1,6 +1,6 @@
 """
 ============================================================================
-GENERAR DATOS DEL PORTAL HTML (incendios-colombia-wfs-v2)
+GENERAR DATOS DEL PORTAL HTML (incendios-colombia-wfs-pro)
 ============================================================================
 Produce los archivos ligeros que lee el visor estático (index.html):
 
@@ -56,7 +56,7 @@ def _cod_int(serie, ndig):
 
 def main():
     print("=" * 60)
-    print("GENERAR DATOS WEB - incendios-colombia-wfs-v2")
+    print("GENERAR DATOS WEB - incendios-colombia-wfs-pro")
     print("=" * 60)
 
     if not F_PARQUET_SRC.exists() and not F_CSV_SRC.exists():
