@@ -47,6 +47,9 @@ table.reg tr.sel td{background:#eef3f8}
 .bar-track{flex:1;height:8px;background:#eef1f4;border-radius:5px;overflow:hidden}
 .bar-fill{height:100%;background:var(--azul);border-radius:5px}
 .reg-dot{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px;vertical-align:middle}
+.map-lbl-dep{font-size:11px;font-weight:700;color:#2c3e50;white-space:nowrap;letter-spacing:.02em;
+  text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff,0 0 3px #fff;transform:translate(-50%,-50%);
+  pointer-events:none;opacity:.9}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
@@ -270,23 +273,12 @@ footer ul{margin:6px 0;padding-left:18px}
       <span class="mini" style="margin-right:4px">Métrica:</span>
       <div class="seg" id="segTree">
         <button data-k="area" aria-pressed="true">Área quemada</button>
-        <button data-k="dens" aria-pressed="false">Densidad</button>
         <button data-k="ev" aria-pressed="false">N° eventos</button>
       </div>
       <span class="mini" id="treeHint"></span>
     </div>
     <div id="treemap"></div>
     <div class="cap" id="treeCap">El tamaño de cada rectángulo es proporcional a la métrica; se agrupan por departamento. Haz clic para profundizar.</div>
-
-    <!-- ===== Registro de municipios (tabla ordenable/buscable) ===== -->
-    <hr class="divisor">
-    <div class="seccion-tit no-pdf">📋 Registro de municipios</div>
-    <div class="reg-top">
-      <input type="search" id="regBuscar" placeholder="Buscar municipio…">
-      <span class="reg-count" id="regCount"></span>
-    </div>
-    <div class="tbl-wrap" style="max-height:460px"><table class="reg" id="registro"></table></div>
-    <div class="cap">Densidad = eventos por cada 1.000 ha del municipio. % área = área quemada acumulada en el periodo respecto al área del municipio (puede superar 100% al sumar varios años).</div>
 
     <hr class="divisor">
     <div class="seccion-tit">📊 Análisis</div>
@@ -355,6 +347,16 @@ footer ul{margin:6px 0;padding-left:18px}
     <hr class="divisor">
     <div class="seccion-tit" style="font-size:14px">Tabla de eventos (principales por área)</div>
     <div class="tbl-wrap"><table class="tbl" id="tblEventos"></table></div>
+
+    <!-- ===== Registro de municipios (tabla ordenable/buscable) ===== -->
+    <hr class="divisor">
+    <div class="seccion-tit no-pdf">📋 Registro de municipios</div>
+    <div class="reg-top">
+      <input type="search" id="regBuscar" placeholder="Buscar municipio…">
+      <span class="reg-count" id="regCount"></span>
+    </div>
+    <div class="tbl-wrap" style="max-height:460px"><table class="reg" id="registro"></table></div>
+    <div class="cap">Densidad = eventos por cada 1.000 ha del municipio. % área = área quemada acumulada en el periodo respecto al área del municipio (puede superar 100% al sumar varios años).</div>
 
     <footer id="pie">
       <div style="font-weight:700;color:var(--tinta)">Términos de uso</div>
@@ -430,7 +432,7 @@ let munsPorDep=new Map();                    // codDepto -> [features muni]
 let AREAS={muni:{},depto:{}};                // area (ha) por codigo
 let F_MIN=0, F_MAX=0;                         // yyyymmdd
 const charts={};
-let mapa, capaChoro, capaMunis, capaContorno, capaCalor, capaPuntos, capaCluster, baseEsri, baseOSM;
+let mapa, capaChoro, capaMunis, capaContorno, capaCalor, capaPuntos, capaCluster, capaLabels, baseEsri, baseOSM;
 let treemapEC=null, gaugeEC=null;            // instancias ECharts
 let regRows=[];                              // filas del registro (para ordenar/buscar)
 
@@ -807,9 +809,18 @@ function initMapa(){
   L.control.layers({'Gris claro (Esri)':baseEsri,'OpenStreetMap':baseOSM},null,{position:'topright'}).addTo(mapa);
 }
 function limpiarCapas(){
-  [capaChoro,capaMunis,capaContorno,capaCalor,capaPuntos,capaCluster].forEach(c=>{ if(c){ mapa.removeLayer(c); } });
-  capaChoro=capaMunis=capaContorno=capaCalor=capaPuntos=capaCluster=null;
+  [capaChoro,capaMunis,capaContorno,capaCalor,capaPuntos,capaCluster,capaLabels].forEach(c=>{ if(c){ mapa.removeLayer(c); } });
+  capaChoro=capaMunis=capaContorno=capaCalor=capaPuntos=capaCluster=capaLabels=null;
 }
+// Punto representativo (centroide aprox. del anillo exterior mayor) para etiquetas
+function anilloMayor(geom){
+  if(!geom) return null;
+  if(geom.type==='Polygon') return geom.coordinates[0];
+  let best=[]; for(const poly of (geom.coordinates||[])){ if(poly[0] && poly[0].length>best.length) best=poly[0]; }
+  return best;
+}
+function centroideAprox(geom){ const r=anilloMayor(geom); if(!r||!r.length) return null;
+  let sx=0,sy=0; for(const c of r){ sx+=c[0]; sy+=c[1]; } return [sy/r.length, sx/r.length]; }
 function conteoPorDepto(){ // usa dff (maskBase, sin geo)
   const m=new Map();
   for(let i=0;i<D.n;i++){ if(maskBase[i]){ const c=D.CD[i]; m.set(c,(m.get(c)||0)+1); } }
@@ -834,6 +845,14 @@ function mapaNacional(){
       layer.on('mouseout',()=>layer.setStyle({weight:1,color:'#ffffff'}));
       layer.on('click',()=>{ const cd=Number(f.properties.DeCodigo); if(nomDep.has(cd)){ irADepto(cd); } });
     }}).addTo(mapa);
+  // Etiquetas con el nombre de cada departamento
+  capaLabels=L.layerGroup();
+  gjDep.features.forEach(f=>{ const cd=Number(f.properties.DeCodigo); if(cd===0) return;
+    const c=centroideAprox(f.geometry); if(!c) return;
+    L.marker(c,{interactive:false, keyboard:false, icon:L.divIcon({className:'',iconSize:[0,0],iconAnchor:[0,0],
+      html:`<div class="map-lbl-dep">${f.properties.DeNombre}</div>`})}).addTo(capaLabels);
+  });
+  capaLabels.addTo(mapa);
   mapa.setView([4.6,-74.1],5.3);
   leyendaChoro(cortes,usaBins);
 }
@@ -858,13 +877,18 @@ function mapaDepartamental(){
   // heat
   if(pts.length){ const heat=pts.map(i=>[D.LAT[i],D.LON[i],1]);
     capaCalor=L.heatLayer(heat,{radius:12,blur:18,minOpacity:.3}).addTo(mapa); }
-  // municipios
+  // municipios (límites internos)
   if(munis.length){ capaMunis=L.geoJSON({type:'FeatureCollection',features:munis},
     {style:{color:'#9aa6b2',weight:1,fillColor:'#fff',fillOpacity:.01,dashArray:'3'},
      onEachFeature:(f,l)=>{ l.bindTooltip(f.properties.MpNombre,{sticky:true});
        l.on('mouseover',()=>l.setStyle({color:'#1f3b57',weight:2,fillOpacity:.08}));
        l.on('mouseout',()=>l.setStyle({color:'#9aa6b2',weight:1,fillOpacity:.01})); }}).addTo(mapa);
-    try{ mapa.fitBounds(capaMunis.getBounds(),{padding:[20,20]}); }catch(e){} }
+  }
+  // Perímetro del departamento (contorno marcado, por encima)
+  const depFeat=gjDep.features.filter(f=>Number(f.properties.DeCodigo)===E.depto);
+  if(depFeat.length){ capaContorno=contornoDe(depFeat).addTo(mapa);
+    try{ mapa.fitBounds(capaContorno.getBounds(),{padding:[20,20]}); }catch(e){} }
+  else if(munis.length){ try{ mapa.fitBounds(capaMunis.getBounds(),{padding:[20,20]}); }catch(e){} }
   $('#leyendaMapa').innerHTML='<b>Densidad de incendios</b>: concentración de eventos por zona (azul=baja → rojo=alta).';
 }
 function contornoDe(features){ return L.geoJSON({type:'FeatureCollection',features},
