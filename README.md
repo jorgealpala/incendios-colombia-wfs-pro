@@ -78,15 +78,16 @@ Columnas del parquet ligero (`incendios_web.parquet`):
 3. **Mapa (Leaflet)**: coropleta (`L.geoJSON` + clasificación), `L.heatLayer` o `L.circleMarker`/
    `markerCluster` según el nivel; tiles Esri Light Gray.
 4. **Gráficas (Chart.js)**: se reconstruyen con los agregados en cada actualización.
-5. **Reporte PDF**: `generarPDF()` captura **bloque por bloque** con `html2canvas` y pagina en
-   **A4 horizontal (apaisado)**, con **2 gráficas por fila** y los bloques anchos (KPIs, mapa,
-   serie diaria, heatmap, tablas) a ancho completo. Ninguna gráfica se parte entre páginas
-   (los bloques muy altos se escalan para caber completos). Los `<canvas>` de Chart.js se
-   sustituyen por su imagen (`toBase64Image`) antes de capturar, porque html2canvas no los
-   rasteriza directamente. La tabla de eventos se recorta a 20 filas en el PDF.
-
-> El mapa base (tiles Esri) puede no aparecer en el PDF; la coropleta/puntos sí, porque se dibujan
-> en el lienzo de Leaflet.
+5. **Reporte PDF** (`generarPDF()`): reporte institucional **A4 vertical, estructurado y nativo**,
+   con el mismo estilo del informe del proyecto Streamlit (`reporte.py`):
+   - Encabezado (logo UNGRD + título), bloque de metadatos (Ámbito / Periodo / Generado) y
+     **tabla de KPIs**, dibujados como **texto y tablas nativas** (jsPDF + `jspdf-autotable`) → nítidos.
+   - Secciones con títulos: **Mapa**, **Análisis**, **Comparativo por año**, **Tops**,
+     **Gestión del riesgo**, **Principales eventos** y **Términos de uso**.
+   - Las **gráficas** se insertan como imagen desde el propio Chart.js (compuestas sobre blanco);
+     el **mapa** y el **heatmap** vía `html2canvas`. La tabla de eventos se limita a 20 filas.
+   - Antes de capturar se fuerza el dibujado síncrono de las gráficas (`chart.draw()`) para que
+     ninguna salga en blanco aunque la pestaña no esté activa.
 
 ### Regenerar los datos
 

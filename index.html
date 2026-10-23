@@ -17,6 +17,7 @@
 <script src="https://cdn.jsdelivr.net/npm/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 
 <style>
@@ -879,84 +880,158 @@ function actualizar(){
    Así ninguna gráfica queda partida entre páginas.                          */
 function textoLimpio(s){
   return s.replace(/[\u{1F000}-\u{1FFFF}←-➿️•]/gu,'')
-          .replace(/[–—]/g,'-').trim();
+          .replace(/≥/g,'>=').replace(/≤/g,'<=').replace(/[–—]/g,'-').trim();
 }
 async function capturar(el){
   return await html2canvas(el,{scale:2,backgroundColor:'#ffffff',useCORS:true,
     logging:false,ignoreElements:n=>n.classList&&(n.classList.contains('leaflet-control-zoom')||n.classList.contains('leaflet-control-layers'))});
 }
+function ambitoTxt(){
+  if(E.nivel==='Nacional') return 'Vista nacional';
+  if(E.nivel==='Departamental') return nomDep.get(E.depto)||'';
+  return `${nomMun.get(E.muni)||''} (${nomDep.get(E.depto)||''})`;
+}
 async function generarPDF(){
   const btn=$('#btnPDF'); const prev=btn.textContent; btn.textContent='Generando…'; btn.disabled=true;
   try{
     const { jsPDF } = window.jspdf;
-    // A4 HORIZONTAL (apaisado): aprovecha el ancho para 2 gráficas por fila.
-    const doc=new jsPDF({unit:'mm',format:'a4',orientation:'landscape'});
-    const PW=297, PH=210, MG=10, TOP=20, BOT=12;
-    const full=PW-2*MG, gap=6, half=(full-gap)/2, maxH=PH-TOP-BOT;
-    const encabezado=()=>{ doc.setFillColor(31,59,87); doc.rect(0,0,PW,16,'F');
-      doc.setTextColor(255); doc.setFont('helvetica','bold'); doc.setFontSize(12);
-      doc.text('Incendios Forestales - Colombia | UNGRD', MG, 10);
-      doc.setFont('helvetica','normal'); doc.setFontSize(8);
-      doc.text(textoLimpio($('#tituloZona').textContent), MG, 14); doc.setTextColor(0); };
-    const pie=()=>{ doc.setFontSize(7); doc.setTextColor(120);
-      doc.text('Fuente: OroraTech WFS - Limites: DIVIPOLA-DANE - UNGRD - SCR', MG, PH-5); doc.setTextColor(0); };
-    encabezado(); let y=TOP; let pend=null;   // pend = bloque angosto esperando compañero (columna izq.)
-
-    const salto=h=>{ if(y+h>PH-BOT){ doc.addPage(); y=14; } };
-    const flush=()=>{ if(pend){ salto(pend.h); doc.addImage(pend.data,'JPEG',MG,y,pend.w,pend.h); y+=pend.h+4; pend=null; } };
-    const addFull=(canvas,capH)=>{ flush(); let w=full,h=canvas.height*w/canvas.width;
-      const lim=Math.min(maxH, capH||maxH);
-      if(h>lim){ h=lim; w=canvas.width*h/canvas.height; } salto(h);
-      doc.addImage(canvas.toDataURL('image/jpeg',.92),'JPEG',MG+(full-w)/2,y,w,h); y+=h+4; };
-    const addHalf=(canvas)=>{ let w=half,h=canvas.height*w/canvas.width;
-      if(h>maxH){ h=maxH; w=canvas.width*h/canvas.height; }
-      const data=canvas.toDataURL('image/jpeg',.92);
-      if(!pend){ pend={data,w,h}; }                 // reservar columna izquierda
-      else{ const rowH=Math.max(pend.h,h); salto(rowH);   // colocar el par
-        doc.addImage(pend.data,'JPEG',MG,y,pend.w,pend.h);
-        doc.addImage(data,'JPEG',MG+half+gap,y,w,h); y+=rowH+4; pend=null; } };
-    const addTexto=(txt,bold,size,color,italic)=>{ flush();
-      doc.setFont('helvetica',italic?'italic':(bold?'bold':'normal')); doc.setFontSize(size);
-      const lines=doc.splitTextToSize(txt,full), hh=lines.length*(size*0.42)+3; salto(hh);
-      doc.setTextColor(...(color||[0,0,0])); lines.forEach(ln=>{ y+=size*0.42; doc.text(ln,MG,y); });
+    // A4 VERTICAL, estilo reporte institucional (texto y tablas nativos).
+    const doc=new jsPDF({unit:'mm',format:'a4'});
+    const PW=210, PH=297, MG=15, cw=PW-2*MG, BOT=16;
+    const AZUL=[31,59,87], ROJO=[192,57,43], GRIS=[120,120,120], TINTA=[44,62,80];
+    let y=MG;
+    const ensure=h=>{ if(y+h>PH-BOT){ doc.addPage(); y=MG; } };
+    const heading=t=>{ ensure(14); doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.setTextColor(...AZUL);
+      doc.text(textoLimpio(t),MG,y+6); doc.setTextColor(0); doc.setFont('helvetica','normal'); y+=11; };
+    const subtit=t=>{ ensure(9); doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(...TINTA);
+      doc.text(textoLimpio(t),MG,y+5); doc.setTextColor(0); doc.setFont('helvetica','normal'); y+=8; };
+    const nota=t=>{ t=textoLimpio(t); if(!t) return; doc.setFont('helvetica','italic'); doc.setFontSize(8); doc.setTextColor(...GRIS);
+      const ls=doc.splitTextToSize(t,cw); ensure(ls.length*4+2); ls.forEach(l=>{ y+=4; doc.text(l,MG,y); });
       doc.setTextColor(0); doc.setFont('helvetica','normal'); y+=3; };
+    const parrafo=(t,size=9)=>{ doc.setFont('helvetica','normal'); doc.setFontSize(size); doc.setTextColor(60,60,60);
+      const ls=doc.splitTextToSize(textoLimpio(t),cw); ls.forEach(l=>{ ensure(size*0.5); y+=size*0.5; doc.text(l,MG,y); });
+      doc.setTextColor(0); y+=2; };
+    // imagen de una gráfica Chart.js (nítida)
+    const imgChart=(id,wmm)=>{ const ch=charts[id]; if(!ch) return null;
+      // Dibujo SÍNCRONO (Chart.js normalmente pinta vía requestAnimationFrame,
+      // que puede estar congelado si la pestaña no está activa -> canvas en blanco).
+      try{ ch.draw(); }catch(e){}
+      // Chart.js es transparente -> en JPEG la transparencia sale negra.
+      // Componemos sobre blanco antes de exportar.
+      const src=ch.canvas, tmp=document.createElement('canvas');
+      tmp.width=src.width; tmp.height=src.height;
+      const cx=tmp.getContext('2d'); cx.fillStyle='#ffffff'; cx.fillRect(0,0,tmp.width,tmp.height); cx.drawImage(src,0,0);
+      return {data:tmp.toDataURL('image/jpeg',0.92),fmt:'JPEG',w:wmm,h:wmm*ch.height/ch.width}; };
+    const imgHtml=async(sel,wmm)=>{ const el=$(sel); if(!el||!el.offsetHeight) return null;
+      const c=await capturar(el); return {data:c.toDataURL('image/jpeg',.92),fmt:'JPEG',w:wmm,h:wmm*c.height/c.width}; };
+    const put=(im,center=true)=>{ if(!im) return; if(im.h>PH-2*MG-10){ const k=(PH-2*MG-10)/im.h; im.h*=k; im.w*=k; }
+      ensure(im.h+3); doc.addImage(im.data,im.fmt,center?MG+(cw-im.w)/2:MG,y,im.w,im.h); y+=im.h+5; };
+    const tabla=(head,body)=>{ doc.autoTable({head,body,startY:y,margin:{left:MG,right:MG},
+      theme:'grid', styles:{fontSize:8,cellPadding:1.6,textColor:[40,40,40]},
+      headStyles:{fillColor:AZUL,textColor:255,fontSize:8,halign:'center'},
+      alternateRowStyles:{fillColor:[244,246,247]} }); y=doc.lastAutoTable.finalY+6; };
+    const tablaDOM=(sel,maxRows)=>{ const t=$(sel); if(!t) return null;
+      const head=[[...t.querySelectorAll('thead th')].map(e=>e.textContent)];
+      let body=[...t.querySelectorAll('tbody tr')].map(tr=>[...tr.children].map(td=>td.textContent));
+      if(maxRows) body=body.slice(0,maxRows); return {head,body}; };
 
-    const cont=$('#contenido');
-    // html2canvas NO captura los <canvas> de Chart.js: los sustituimos por una
-    // imagen (nativa de Chart.js, alta resolución) y las restauramos al final.
-    const swaps=[];
-    cont.querySelectorAll('canvas').forEach(cv=>{ const ch=charts[cv.id]; if(!ch) return;
-      const img=document.createElement('img'); img.src=ch.toBase64Image('image/png',1);
-      img.style.width=cv.clientWidth+'px'; img.style.height=cv.clientHeight+'px'; img.style.display='block';
-      cv.style.display='none'; cv.parentNode.insertBefore(img,cv); swaps.push({cv,img}); });
-    await new Promise(r=>setTimeout(r,60));
+    // Forzar el redibujado de TODAS las gráficas: evita canvas en blanco si
+    // alguna quedó sin repintar tras un cambio de tamaño de su contenedor.
+    Object.values(charts).forEach(c=>{ try{ c.resize(); c.update('none'); }catch(e){} });
+    await new Promise(r=>setTimeout(r,300));
 
-    const nodos=[...cont.querySelectorAll('#kpis, #mapa, #leyendaMapa, .seccion-tit, #notaParcial, .card, #tblEventos')];
-    try{
-    for(const node of nodos){
-      if(!node.offsetHeight) continue;
-      if(node.classList.contains('seccion-tit')){ addTexto(textoLimpio(node.textContent),true,12,[31,59,87]); continue; }
-      if(node.id==='notaParcial'){ const t=textoLimpio(node.textContent); if(t) addTexto(t,false,8,[120,120,120],true); continue; }
-      // tabla de eventos: recortar a 20 filas
-      let elCap=node, temp=null;
-      if(node.id==='tblEventos'){ temp=node.cloneNode(true);
-        const tb=temp.querySelector('tbody'); if(tb)[...tb.rows].slice(20).forEach(r=>r.remove());
-        temp.style.cssText=`position:absolute;left:-9999px;top:0;width:${node.offsetWidth}px;background:#fff`;
-        document.body.appendChild(temp); elCap=temp; }
-      let canvas; try{ canvas=await capturar(elCap); } finally{ if(temp) document.body.removeChild(temp); }
-      // bloques ANCHOS (a ancho completo): KPIs, mapa, leyenda, serie diaria,
-      // heatmap de estacionalidad, tablas. El resto (gráficas) van en 2 columnas.
-      const ancho = node.id==='kpis'||node.id==='mapa'||node.id==='leyendaMapa'||node.id==='tblEventos'
-        || (node.querySelector && (node.querySelector('#chDia')||node.querySelector('#heatEstac')||node.querySelector('.tbl')));
-      if(node.id==='mapa') addFull(canvas,122);   // mapa con altura acotada (cabe con KPIs)
-      else if(ancho) addFull(canvas); else addHalf(canvas);
+    // ---------- ENCABEZADO (pág. 1) ----------
+    const logo=$('#logo');
+    if(logo && logo.naturalWidth){ const lw=30, lh=lw*logo.naturalHeight/logo.naturalWidth;
+      try{ doc.addImage(logo,'PNG',MG,y,lw,lh); }catch(e){} }
+    doc.setFont('helvetica','bold'); doc.setFontSize(16); doc.setTextColor(...ROJO);
+    doc.text('Incendios Forestales - Colombia', MG+34, y+6);
+    doc.setFont('helvetica','normal'); doc.setFontSize(8.5); doc.setTextColor(90,90,90);
+    doc.text('Unidad Nacional para la Gestión del Riesgo de Desastres', MG+34, y+12);
+    doc.text('Subdirección para el Conocimiento del Riesgo', MG+34, y+16);
+    doc.setTextColor(0); y+=22;
+    doc.setFontSize(8); doc.setTextColor(...GRIS);
+    doc.text('Fuente de datos: WildFire Solution - OroraTech', MG, y); doc.setTextColor(0); y+=7;
+    doc.setFontSize(9.5);
+    const meta=[['Ámbito:',ambitoTxt()],['Periodo:',etiquetaPeriodo()],
+      ['Generado:',new Date().toLocaleString('es-CO',{dateStyle:'short',timeStyle:'short'})]];
+    meta.forEach(([k,v])=>{ doc.setFont('helvetica','bold'); doc.text(k,MG,y);
+      doc.setFont('helvetica','normal'); doc.text(textoLimpio(String(v)),MG+24,y); y+=5; });
+    y+=3;
+
+    // ---------- KPIs (tabla) ----------
+    tabla([['Eventos','Área total (ha)','Área prom. (ha)','% conf. >=0.6']],
+      [[$('#kpiEventos').textContent,$('#kpiArea').textContent,$('#kpiAreaProm').textContent,$('#kpiAlta').textContent]]);
+    doc.setFont('helvetica','bold');
+
+    // ---------- MAPA ----------
+    heading('Mapa');
+    try{ mapa.invalidateSize(); }catch(e){}
+    await new Promise(r=>setTimeout(r,500));   // dar tiempo a que Leaflet repinte
+    put(await imgHtml('#mapa',150));
+    const ley=$('#leyendaMapa'); if(ley && ley.textContent.trim()){ put(await imgHtml('#leyendaMapa',cw),false); }
+
+    // ---------- ANÁLISIS ----------
+    doc.addPage(); y=MG;
+    heading('Análisis');
+    put(imgChart('chConf',120));
+    put(imgChart('chMes',120));
+    put(imgChart('chDia',175));
+
+    // ---------- COMPARATIVO POR AÑO ----------
+    if($('#secAnual') && $('#secAnual').offsetHeight && charts['chTortaEv']){
+      doc.addPage(); y=MG;
+      heading('Análisis comparativo por año');
+      nota($('#notaParcial').textContent);
+      const par=(a,b)=>{ if(a&&b){ const h=Math.max(a.h,b.h); ensure(h+3);
+        doc.addImage(a.data,a.fmt,MG+(cw/2-a.w)/2,y,a.w,a.h);
+        doc.addImage(b.data,b.fmt,MG+cw/2+(cw/2-b.w)/2,y,b.w,b.h); y+=h+6; } };
+      par(imgChart('chTortaEv',82), imgChart('chTortaAr',82));
+      par(imgChart('chBarraEv',88), imgChart('chBarraAr',88));
     }
-    flush();
-    } finally { swaps.forEach(s=>{ s.img.remove(); s.cv.style.display=''; }); }
-    // pie en todas las páginas
+
+    // ---------- TOPS ----------
+    doc.addPage(); y=MG;
+    heading(E.nivel==='Nacional'?'Top por departamento':(E.nivel==='Departamental'?'Top por municipio':'Distribución del municipio'));
+    put(imgChart('chTop1',155));
+    put(imgChart('chTop2',155));
+
+    // ---------- GESTIÓN DEL RIESGO ----------
+    if($('#secRiesgo') && $('#secRiesgo').offsetHeight){
+      doc.addPage(); y=MG;
+      heading('Análisis para gestión del riesgo');
+      nota('Herramientas para anticipar y priorizar ante la temporada seca / Fenómeno de El Niño.');
+      subtit('1. Recurrencia estacional'); const tr=tablaDOM('#tblRec'); if(tr&&tr.body.length) tabla(tr.head,tr.body);
+      subtit('2. Mapa de calor de estacionalidad'); put(await imgHtml('#heatEstac',cw),false);
+      subtit('3. Municipios reincidentes'); const tri=tablaDOM('#tblReinc'); if(tri&&tri.body.length) tabla(tri.head,tri.body);
+      subtit('4. Distribución histórica por mes'); put(imgChart('chCal',130));
+    }
+
+    // ---------- TABLA DE EVENTOS ----------
+    doc.addPage(); y=MG;
+    heading('Principales eventos (por área)');
+    const te=tablaDOM('#tblEventos',20); if(te) tabla(te.head,te.body);
+
+    // ---------- TÉRMINOS / CRÉDITOS ----------
+    doc.addPage(); y=MG;
+    heading('Términos de uso');
+    parrafo('Los GeoVisores de la UNGRD facilitan al público el acceso, consulta y visualización de '+
+      'información geográfica relacionada con la gestión del riesgo de desastres en Colombia. La información '+
+      'tiene carácter informativo y de apoyo a la toma de decisiones; su uso e interpretación es responsabilidad '+
+      'del usuario. La UNGRD no garantiza que esté libre de errores y podrá actualizarla sin previo aviso. '+
+      'Respete los derechos de autor y cite adecuadamente la fuente.',9);
+    y+=4; doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.text('UNIDAD NACIONAL PARA LA GESTIÓN DEL RIESGO DE DESASTRES - UNGRD',MG,y); y+=8;
+    parrafo('Realizado por: Jorge Alpala (jorge.alpala@gestiondelriesgo.gov.co, UNGRD - SCR). Elaboración: 2026.',9);
+    parrafo('Fuentes y créditos: Datos: OroraTech WildFire Solution (WFS). Límites: DIVIPOLA - DANE. '+
+      'Desarrollado con Leaflet, Chart.js, hyparquet y jsPDF. Mapa base: Esri, OpenStreetMap.',9);
+    parrafo('Cómo citar: Alpala, J. (2026). Incendios Forestales - Colombia: GeoVisor de monitoreo y análisis '+
+      'de incendios con datos de WildFire Solution (OroraTech). UNGRD - Subdirección para el Conocimiento del Riesgo.',9);
+
+    // ---------- PIE EN TODAS LAS PÁGINAS ----------
     const total=doc.getNumberOfPages();
-    for(let p=1;p<=total;p++){ doc.setPage(p); pie();
-      doc.setFontSize(7); doc.setTextColor(150); doc.text(`${p}/${total}`, PW-MG-8, PH-5); doc.setTextColor(0); }
+    for(let p=1;p<=total;p++){ doc.setPage(p); doc.setFontSize(7); doc.setTextColor(...GRIS);
+      doc.text('Fuente: OroraTech WFS - Límites: DIVIPOLA-DANE - UNGRD - SCR', MG, PH-8);
+      doc.text(`${p}/${total}`, PW-MG-8, PH-8); doc.setTextColor(0); }
     if(new URLSearchParams(location.search).get('pdfhook')==='1') window.__lastPDF=doc.output('datauristring');
     doc.save(`Reporte_Incendios_${new Date().toISOString().slice(0,10)}.pdf`);
   }catch(e){ alert('No se pudo generar el PDF: '+e.message); console.error(e); }
