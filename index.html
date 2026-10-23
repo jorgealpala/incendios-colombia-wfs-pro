@@ -625,20 +625,35 @@ function gTrimestre(){
   const anios=Object.keys(porWY).map(Number).sort();
   // Las celdas futuras (mes en curso aún sin datos) van como null: la línea del
   // año en curso TERMINA en el último mes con datos (no se desploma a 0).
-  const ds=anios.map(a=>({label:String(a),
+  const dsYears=anios.map(a=>({label:String(a),
     data:win.map((m,p)=> conDato(a,m)?porWY[a][p]:null),
     borderColor:COLOR_ANIO[a]||'#888', backgroundColor:COLOR_ANIO[a]||'#888',
     tension:.3, pointRadius:3, borderWidth:2, spanGaps:false}));
+  // Envolvente histórica por mes: promedio + banda mín–máx (rango de oscilación)
   const prom=win.map((m,p)=>{ let s=0,k=0; anios.forEach(a=>{ if(conDato(a,m)){ s+=porWY[a][p]; k++; } }); return k?s/k:0; });
-  ds.push({label:'Promedio',data:prom,borderColor:'#000',borderDash:[6,4],pointRadius:0,borderWidth:1.3});
-  nuevoChart('chTrim',{type:'line',data:{labels,datasets:ds},
+  const maxData=win.map((m,p)=>{ let b=-Infinity; anios.forEach(a=>{ if(conDato(a,m)) b=Math.max(b,porWY[a][p]); }); return isFinite(b)?b:null; });
+  const minData=win.map((m,p)=>{ let b= Infinity; anios.forEach(a=>{ if(conDato(a,m)) b=Math.min(b,porWY[a][p]); }); return isFinite(b)?b:null; });
+  const GRIS='rgba(110,120,130,0.6)';
+  // La banda va PRIMERO (al fondo): la línea 'máx' se oculta de la leyenda y el
+  // 'mín' rellena hasta la 'máx' (fill:'-1') pintando el área sombreada.
+  const banda=[
+    {label:'maxhide', data:maxData, borderColor:GRIS, borderWidth:1, borderDash:[3,3],
+     pointRadius:2, pointBackgroundColor:GRIS, pointBorderWidth:0, fill:false, tension:.3, spanGaps:false},
+    {label:'Rango mín–máx (histórico)', data:minData, borderColor:GRIS, borderWidth:1, borderDash:[3,3],
+     pointRadius:2, pointBackgroundColor:GRIS, pointBorderWidth:0, fill:'-1',
+     backgroundColor:'rgba(31,59,87,0.08)', tension:.3, spanGaps:false},
+  ];
+  const avg={label:'Promedio',data:prom,borderColor:'#000',borderDash:[6,4],pointRadius:0,borderWidth:1.4};
+  nuevoChart('chTrim',{type:'line',data:{labels,datasets:[...banda,...dsYears,avg]},
     options:{maintainAspectRatio:false,responsive:true,
-      plugins:{legend:{position:'bottom',labels:{boxWidth:12,font:{size:10}}}},
+      plugins:{legend:{position:'bottom',labels:{boxWidth:12,font:{size:10},filter:it=>it.text!=='maxhide'}},
+        tooltip:{filter:it=>it.dataset.label!=='maxhide'}},
       scales:{x:{grid:{display:false}},y:{beginAtZero:true,grid:{color:'#eef1f4'}}}}});
   const amb = E.nivel==='Nacional'?'nacional':(E.nivel==='Departamental'?(nomDep.get(E.depto)||''):(nomMun.get(E.muni)||''));
   $('#trimTit').textContent = `Últimos 6 meses (${labels.join(' · ')}) — comparativo por año`;
-  $('#trimCap').textContent = `Compara ${labels.join(', ')} entre años (${amb}); respeta el nivel y la confianza, `+
-    `pero es independiente del rango de fechas. El mes en curso puede estar incompleto.`;
+  $('#trimCap').textContent = `Compara ${labels.join(', ')} entre años (${amb}). La banda sombreada es el rango `+
+    `histórico mín–máx de cada mes (oscilación); la línea negra punteada es el promedio. Respeta el nivel y la `+
+    `confianza, pero es independiente del rango de fechas; el mes en curso puede estar incompleto.`;
 }
 
 function gDia(){
