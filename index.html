@@ -291,6 +291,10 @@ footer ul{margin:6px 0;padding-left:18px}
         <div class="cap">Cada línea de color es un año; la línea negra punteada es el promedio mensual entre años.</div></div>
     </div>
 
+    <div class="card" style="margin-top:16px"><h4 id="trimTit">Últimos 3 meses (comparativo por año)</h4>
+      <div class="chart-box"><canvas id="chTrim"></canvas></div>
+      <div class="cap" id="trimCap"></div></div>
+
     <div class="card" style="margin-top:16px"><h4>Eventos por día (rango seleccionado)</h4>
       <div class="chart-box alta"><canvas id="chDia"></canvas></div>
       <div class="cap">Línea gris: eventos diarios. Línea roja: promedio móvil de 7 días.</div></div>
@@ -596,6 +600,43 @@ function gMes(){
     options:{maintainAspectRatio:false,responsive:true,
       plugins:{legend:{position:'bottom',labels:{boxWidth:12,font:{size:10}}}},
       scales:{x:{grid:{display:false}},y:{beginAtZero:true,grid:{color:'#eef1f4'}}}}});
+}
+
+/* Últimos 3 meses (según la fecha actual) comparados por año. Respeta nivel y
+   confianza; es independiente del rango de fechas (monitor del trimestre
+   reciente). Si la ventana cruza fin de año, el año se asigna al de cierre. */
+function gTrimestre(){
+  const mEnd=new Date().getMonth()+1;                           // mes actual (1-12)
+  const win=[(mEnd-2),(mEnd-1),mEnd].map(m=>((m-1+12)%12)+1);   // 3 meses, con wrap
+  const cs=confsActivas();
+  const porWY={};                                               // añoCierre -> [v0,v1,v2]
+  for(let i=0;i<D.n;i++){
+    const mo=D.MO[i], pos=win.indexOf(mo); if(pos<0) continue;
+    if(!cs.has(D.CONF[i]) || !geoOK(i)) continue;
+    const wy = (mo<=mEnd) ? D.YR[i] : D.YR[i]+1;                // año de cierre de la ventana
+    (porWY[wy]=porWY[wy]||[0,0,0])[pos]++;
+  }
+  const labels = win.map(m=>MESES[m-1]);
+  const fmaxYm = Math.floor(F_MAX/100);                         // yyyymm con datos
+  const calYear=(a,m)=> (m<=mEnd)?a:a-1;                        // año calendario de la celda
+  const conDato=(a,m)=> calYear(a,m)*100+m <= fmaxYm;          // ¿hay datos para esa celda?
+  const anios=Object.keys(porWY).map(Number).sort();
+  // Las celdas futuras (mes en curso aún sin datos) van como null: la línea del
+  // año en curso TERMINA en el último mes con datos (no se desploma a 0).
+  const ds=anios.map(a=>({label:String(a),
+    data:win.map((m,p)=> conDato(a,m)?porWY[a][p]:null),
+    borderColor:COLOR_ANIO[a]||'#888', backgroundColor:COLOR_ANIO[a]||'#888',
+    tension:.3, pointRadius:3, borderWidth:2, spanGaps:false}));
+  const prom=win.map((m,p)=>{ let s=0,k=0; anios.forEach(a=>{ if(conDato(a,m)){ s+=porWY[a][p]; k++; } }); return k?s/k:0; });
+  ds.push({label:'Promedio',data:prom,borderColor:'#000',borderDash:[6,4],pointRadius:0,borderWidth:1.3});
+  nuevoChart('chTrim',{type:'line',data:{labels,datasets:ds},
+    options:{maintainAspectRatio:false,responsive:true,
+      plugins:{legend:{position:'bottom',labels:{boxWidth:12,font:{size:10}}}},
+      scales:{x:{grid:{display:false}},y:{beginAtZero:true,grid:{color:'#eef1f4'}}}}});
+  const amb = E.nivel==='Nacional'?'nacional':(E.nivel==='Departamental'?(nomDep.get(E.depto)||''):(nomMun.get(E.muni)||''));
+  $('#trimTit').textContent = `Últimos 3 meses (${labels.join(' · ')}) — comparativo por año`;
+  $('#trimCap').textContent = `Compara ${labels.join(', ')} entre años (${amb}); respeta el nivel y la confianza, `+
+    `pero es independiente del rango de fechas. El mes en curso puede estar incompleto.`;
 }
 
 function gDia(){
@@ -993,7 +1034,7 @@ function actualizar(){
   actualizarMapa();
   construirRegistro();        // agrega por municipio (alimenta treemap + registro)
   treemapRender(); registroRender();
-  gConfianza(); gMes(); gDia(); gAnual(); gTops();
+  gConfianza(); gMes(); gTrimestre(); gDia(); gAnual(); gTops();
   seccionRiesgo();
   pintarTabla();
 }
