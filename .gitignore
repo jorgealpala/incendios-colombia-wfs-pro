@@ -38,3 +38,4 @@ desktop.ini
 
 # --- Node (solo si se usan herramientas locales) ---
 node_modules/
+backup/
