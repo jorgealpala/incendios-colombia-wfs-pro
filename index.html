@@ -615,13 +615,11 @@ function gMesSerie(){
   const labels=[], ev=[];
   for(let k=minK;k<=maxK;k++){ const y=Math.floor(k/12), m=(k%12)+1;
     labels.push(`${MESES[m-1]} ${String(y).slice(2)}`); ev.push(porMes.get(k)||0); }
-  // media móvil de 12 meses (centrada) = tendencia
-  const W=12, half=6;
-  const ma=ev.map((_,i)=>{ let s=0,c=0; for(let j=Math.max(0,i-half);j<=Math.min(ev.length-1,i+half-1);j++){s+=ev[j];c++;} return +(s/c).toFixed(1); });
+  // media móvil de 6 meses (centrada) = tendencia
+  const ma=ev.map((_,i)=>{ let s=0,c=0; for(let j=Math.max(0,i-3);j<=Math.min(ev.length-1,i+2);j++){s+=ev[j];c++;} return +(s/c).toFixed(1); });
   nuevoChart('chTrim',{type:'line',data:{labels,datasets:[
-    {label:'Eventos por mes',data:ev,borderColor:'#2980b9',backgroundColor:'rgba(41,128,185,0.10)',
-     fill:true,pointRadius:1.5,borderWidth:1.6,tension:.25},
-    {label:'Tendencia (media móvil 12 meses)',data:ma,borderColor:'#e74c3c',pointRadius:0,borderWidth:2,tension:.3}
+    {label:'Eventos por mes',data:ev,borderColor:'#bdc3c7',pointRadius:0,borderWidth:1.4,tension:.25},
+    {label:'Media móvil 6 meses',data:ma,borderColor:'#e74c3c',pointRadius:0,borderWidth:2,tension:.3}
   ]},options:{maintainAspectRatio:false,responsive:true,
      plugins:{legend:{position:'bottom',labels:{boxWidth:12,font:{size:10}}}},
      scales:{x:{grid:{display:false},ticks:{maxTicksLimit:16,autoSkip:true,maxRotation:0}},
@@ -629,7 +627,7 @@ function gMesSerie(){
   const amb = E.nivel==='Nacional'?'nacional':(E.nivel==='Departamental'?(nomDep.get(E.depto)||''):(nomMun.get(E.muni)||''));
   $('#trimTit').textContent='Eventos por mes (rango seleccionado)';
   $('#trimCap').textContent=`Serie mensual continua de eventos (${amb}) para el periodo y filtros seleccionados. `+
-    `La línea azul es el total por mes; la roja es el promedio móvil de 12 meses (tendencia).`;
+    `La línea gris es el total por mes; la roja es el promedio móvil de 6 meses (tendencia).`;
 }
 
 function gDia(){
@@ -643,9 +641,10 @@ function gDia(){
   // media movil 7 (centrada)
   const ma=ev.map((_,i)=>{ let s=0,k=0; for(let j=Math.max(0,i-3);j<=Math.min(ev.length-1,i+3);j++){s+=ev[j];k++;} return s/k; });
   nuevoChart('chDia',{type:'line',data:{labels,datasets:[
-    {label:'Eventos',data:ev,borderColor:'#bdc3c7',pointRadius:0,borderWidth:1},
-    {label:'Media 7 días',data:ma,borderColor:'#e74c3c',pointRadius:0,borderWidth:2}]},
-    options:{maintainAspectRatio:false,responsive:true,plugins:{legend:{display:false}},
+    {label:'Eventos por día',data:ev,borderColor:'#bdc3c7',pointRadius:0,borderWidth:1},
+    {label:'Media móvil 7 días',data:ma,borderColor:'#e74c3c',pointRadius:0,borderWidth:2}]},
+    options:{maintainAspectRatio:false,responsive:true,
+      plugins:{legend:{position:'bottom',labels:{boxWidth:12,font:{size:10}}}},
       scales:{x:{grid:{display:false},ticks:{maxTicksLimit:10}},y:{beginAtZero:true,grid:{color:'#eef1f4'}}}}});
 }
 
