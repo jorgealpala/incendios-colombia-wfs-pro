@@ -991,7 +991,14 @@ function initMapa(){
   const ESRI='https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}';
   baseEsri=L.tileLayer(ESRI,{attribution:'Tiles &copy; Esri',maxZoom:16,crossOrigin:'anonymous'}).addTo(mapa);
   baseOSM=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'&copy; OpenStreetMap',maxZoom:19});
-  L.control.layers({'Gris claro (Esri)':baseEsri,'OpenStreetMap':baseOSM},null,{position:'topright'}).addTo(mapa);
+  // Satélite (Esri World Imagery) con límites y nombres encima para no perder referencia
+  const satImg=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    {attribution:'Tiles &copy; Esri — Source: Esri, Maxar, Earthstar Geographics y la comunidad GIS',maxZoom:19,crossOrigin:'anonymous'});
+  const satRef=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+    {maxZoom:19,crossOrigin:'anonymous'});
+  const baseSat=L.layerGroup([satImg,satRef]);
+  L.control.layers({'Gris claro (Esri)':baseEsri,'Satélite (Esri)':baseSat,'OpenStreetMap':baseOSM},
+    null,{position:'topright'}).addTo(mapa);
   // Re-declutter de etiquetas de departamento al cambiar el zoom
   mapa.on('zoomend', ()=>{ if(E.nivel==='Nacional') pintarEtiquetasDep(); else if(E.nivel==='Departamental') pintarEtiquetasMuni(); });
 }
