@@ -50,6 +50,9 @@ table.reg tr.sel td{background:#eef3f8}
 .map-lbl-dep{font-size:11px;font-weight:700;color:#2c3e50;white-space:nowrap;letter-spacing:.02em;
   text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff,0 0 3px #fff;transform:translate(-50%,-50%);
   pointer-events:none;opacity:.9}
+.map-lbl-mun{font-size:10px;font-weight:600;color:#3a4654;white-space:nowrap;
+  text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff;transform:translate(-50%,-50%);
+  pointer-events:none;opacity:.88}
 .tend-tiles{display:flex;gap:20px;flex-wrap:wrap}
 .tend-tile{min-width:118px}
 .tend-tile .tt-lbl{font-size:11px;color:var(--gris)}
@@ -304,7 +307,7 @@ footer ul{margin:6px 0;padding-left:18px}
     <hr class="divisor">
     <div class="seccion-tit">📊 Análisis</div>
 
-    <div class="grid2">
+    <div class="grid2" style="grid-template-columns:5fr 7fr">
       <div class="card"><h4>Distribución por nivel de confianza</h4>
         <div class="chart-box"><canvas id="chConf"></canvas></div></div>
       <div class="card"><h4>Eventos por mes (comparativo por año)</h4>
@@ -327,13 +330,13 @@ footer ul{margin:6px 0;padding-left:18px}
     <div id="secAnual">
       <div class="seccion-tit" style="font-size:14px">Análisis comparativo por año</div>
       <div class="cap" id="notaParcial" style="margin:-4px 0 10px"></div>
-      <div class="grid3">
-        <div class="card">
-          <h4 style="text-align:center">Eventos por año (%)</h4>
-          <div class="chart-box"><canvas id="chTortaEv"></canvas></div>
-          <h4 style="text-align:center;margin-top:10px">Área quemada por año (%)</h4>
-          <div class="chart-box"><canvas id="chTortaAr"></canvas></div>
-        </div>
+      <div class="grid2">
+        <div class="card"><h4 style="text-align:center">Eventos por año (%)</h4>
+          <div class="chart-box alta"><canvas id="chTortaEv"></canvas></div></div>
+        <div class="card"><h4 style="text-align:center">Área quemada por año (%)</h4>
+          <div class="chart-box alta"><canvas id="chTortaAr"></canvas></div></div>
+      </div>
+      <div class="grid2" style="margin-top:16px">
         <div class="card"><h4>Eventos por año (y variación %)</h4>
           <div class="chart-box alta"><canvas id="chBarraEv"></canvas></div></div>
         <div class="card"><h4>Área quemada por año (y variación %)</h4>
@@ -402,7 +405,6 @@ footer ul{margin:6px 0;padding-left:18px}
         geográfica relacionada con la gestión del riesgo de desastres en Colombia. La información tiene
         carácter informativo y de apoyo a la toma de decisiones; su uso e interpretación es responsabilidad
         del usuario. La UNGRD no garantiza que esté libre de errores y podrá actualizarla sin previo aviso.
-        Respete los derechos de autor y cite la fuente.
       </div>
       <div class="cols">
         <div>
@@ -645,22 +647,26 @@ function gMesSerie(){
     porMes.set(k,(porMes.get(k)||0)+1); if(k<minK)minK=k; if(k>maxK)maxK=k; } }
   if(!isFinite(minK)){ nuevoChart('chTrim',{type:'line',data:{labels:[],datasets:[]},options:ejeComun});
     $('#trimTit').textContent='Eventos por mes'; $('#trimCap').textContent='Sin datos para el periodo seleccionado.'; return; }
-  const labels=[], ev=[];
+  const labels=[], labelsFull=[], ev=[];
   for(let k=minK;k<=maxK;k++){ const y=Math.floor(k/12), m=(k%12)+1;
-    labels.push(`${MESES[m-1]} ${String(y).slice(2)}`); ev.push(porMes.get(k)||0); }
+    labels.push(`${MESES[m-1]} ${String(y).slice(2)}`); labelsFull.push(`${MESES[m-1]} ${y}`); ev.push(porMes.get(k)||0); }
   // media móvil de 6 meses (centrada) = tendencia
   const ma=ev.map((_,i)=>{ let s=0,c=0; for(let j=Math.max(0,i-3);j<=Math.min(ev.length-1,i+2);j++){s+=ev[j];c++;} return +(s/c).toFixed(1); });
+  // La media móvil (gris) va al FONDO; los eventos reales (rojo) al FRENTE.
   nuevoChart('chTrim',{type:'line',data:{labels,datasets:[
-    {label:'Eventos por mes',data:ev,borderColor:'#bdc3c7',pointRadius:0,borderWidth:1.4,tension:.25},
-    {label:'Media móvil 6 meses',data:ma,borderColor:'#e74c3c',pointRadius:0,borderWidth:2,tension:.3}
+    {label:'Media móvil 6 meses',data:ma,borderColor:'#9aa6b2',pointRadius:0,borderWidth:2,tension:.3},
+    {label:'Eventos por mes',data:ev,borderColor:'#e74c3c',pointRadius:0,borderWidth:1.8,tension:.25}
   ]},options:{maintainAspectRatio:false,responsive:true,
-     plugins:{legend:{position:'bottom',labels:{boxWidth:12,font:{size:10}}}},
+     interaction:{mode:'index',intersect:false},
+     plugins:{legend:{position:'bottom',labels:{boxWidth:12,font:{size:10}}},
+       tooltip:{callbacks:{title:items=>labelsFull[items[0].dataIndex],
+         label:c=>`${c.dataset.label}: ${fmt(Math.round(c.parsed.y))} eventos`}}},
      scales:{x:{grid:{display:false},ticks:{maxTicksLimit:16,autoSkip:true,maxRotation:0}},
        y:{beginAtZero:true,grid:{color:'#eef1f4'},title:{display:true,text:'eventos'}}}}});
   const amb = E.nivel==='Nacional'?'nacional':(E.nivel==='Departamental'?(nomDep.get(E.depto)||''):(nomMun.get(E.muni)||''));
   $('#trimTit').textContent='Eventos por mes (rango seleccionado)';
   $('#trimCap').textContent=`Serie mensual continua de eventos (${amb}) para el periodo y filtros seleccionados. `+
-    `La línea gris es el total por mes; la roja es el promedio móvil de 6 meses (tendencia).`;
+    `La línea roja es el total por mes; la gris es el promedio móvil de 6 meses (tendencia).`;
 }
 
 function gDia(){
@@ -673,11 +679,16 @@ function gDia(){
     labels.push(dt.toISOString().slice(0,10)); ev.push(porDia.get(d)||0); }
   // media movil 7 (centrada)
   const ma=ev.map((_,i)=>{ let s=0,k=0; for(let j=Math.max(0,i-3);j<=Math.min(ev.length-1,i+3);j++){s+=ev[j];k++;} return s/k; });
+  const fechaDMA=iso=>iso.split('-').reverse().join('/');     // AAAA-MM-DD -> DD/MM/AAAA
+  // La media móvil (gris) va al FONDO; los eventos reales (rojo) al FRENTE.
   nuevoChart('chDia',{type:'line',data:{labels,datasets:[
-    {label:'Eventos por día',data:ev,borderColor:'#bdc3c7',pointRadius:0,borderWidth:1},
-    {label:'Media móvil 7 días',data:ma,borderColor:'#e74c3c',pointRadius:0,borderWidth:2}]},
+    {label:'Media móvil 7 días',data:ma,borderColor:'#9aa6b2',pointRadius:0,borderWidth:2},
+    {label:'Eventos por día',data:ev,borderColor:'#e74c3c',pointRadius:0,borderWidth:1.2}]},
     options:{maintainAspectRatio:false,responsive:true,
-      plugins:{legend:{position:'bottom',labels:{boxWidth:12,font:{size:10}}}},
+      interaction:{mode:'index',intersect:false},
+      plugins:{legend:{position:'bottom',labels:{boxWidth:12,font:{size:10}}},
+        tooltip:{callbacks:{title:items=>fechaDMA(items[0].label),
+          label:c=>`${c.dataset.label}: ${fmt(Math.round(c.parsed.y))} eventos`}}},
       scales:{x:{grid:{display:false},ticks:{maxTicksLimit:10}},y:{beginAtZero:true,grid:{color:'#eef1f4'}}}}});
 }
 
@@ -966,7 +977,7 @@ function initMapa(){
   baseOSM=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'&copy; OpenStreetMap',maxZoom:19});
   L.control.layers({'Gris claro (Esri)':baseEsri,'OpenStreetMap':baseOSM},null,{position:'topright'}).addTo(mapa);
   // Re-declutter de etiquetas de departamento al cambiar el zoom
-  mapa.on('zoomend', ()=>{ if(E.nivel==='Nacional') pintarEtiquetasDep(); });
+  mapa.on('zoomend', ()=>{ if(E.nivel==='Nacional') pintarEtiquetasDep(); else if(E.nivel==='Departamental') pintarEtiquetasMuni(); });
 }
 function limpiarCapas(){
   [capaChoro,capaMunis,capaContorno,capaCalor,capaPuntos,capaCluster,capaLabels].forEach(c=>{ if(c){ mapa.removeLayer(c); } });
@@ -1012,27 +1023,32 @@ function mapaNacional(){
 // Etiquetas de departamento con anti-solapamiento: prioriza los más grandes
 // (por área) y omite los que chocarían a la escala actual; al hacer zoom
 // aparecen las omitidas (se re-dibuja en 'zoomend').
-function pintarEtiquetasDep(){
-  if(!mapa || !gjDep) return;
+// Coloca etiquetas con anti-solapamiento: prioriza las de mayor área y omite
+// las que chocarían a la escala actual (al hacer zoom aparecen las omitidas).
+function pintarEtiquetas(features, nombreFn, areaFn, cls){
+  if(!mapa) return;
   if(capaLabels){ mapa.removeLayer(capaLabels); capaLabels=null; }
-  if(E.nivel!=='Nacional') return;
   capaLabels=L.layerGroup();
   const cand=[];
-  gjDep.features.forEach(f=>{ const cd=Number(f.properties.DeCodigo); if(cd===0) return;
-    const c=centroideAprox(f.geometry); if(!c) return;
-    const nom=f.properties.DeNombre;
-    cand.push({nom, ll:L.latLng(c[0],c[1]), area:AREAS.depto[String(cd)]||0, w:nom.length*5.9+6}); });
-  cand.sort((a,b)=>b.area-a.area);                   // mayores primero
+  features.forEach(f=>{ const c=centroideAprox(f.geometry); if(!c) return;
+    const nom=nombreFn(f); if(!nom) return;
+    cand.push({nom, ll:L.latLng(c[0],c[1]), area:areaFn(f)||0, w:nom.length*5.6+6}); });
+  cand.sort((a,b)=>b.area-a.area);
   const puestos=[];
   cand.forEach(o=>{ const p=mapa.latLngToContainerPoint(o.ll);
-    const choca=puestos.some(q=>Math.abs(q.x-p.x) < (q.w+o.w)/2 && Math.abs(q.y-p.y) < 15);
-    if(choca) return;
+    if(puestos.some(q=>Math.abs(q.x-p.x) < (q.w+o.w)/2 && Math.abs(q.y-p.y) < 14)) return;
     puestos.push({x:p.x,y:p.y,w:o.w});
     L.marker(o.ll,{interactive:false,keyboard:false,icon:L.divIcon({className:'',iconSize:[0,0],iconAnchor:[0,0],
-      html:`<div class="map-lbl-dep">${o.nom}</div>`})}).addTo(capaLabels);
+      html:`<div class="${cls}">${o.nom}</div>`})}).addTo(capaLabels);
   });
   capaLabels.addTo(mapa);
 }
+function pintarEtiquetasDep(){ if(!mapa||!gjDep||E.nivel!=='Nacional') return;
+  pintarEtiquetas(gjDep.features.filter(f=>Number(f.properties.DeCodigo)!==0),
+    f=>f.properties.DeNombre, f=>AREAS.depto[String(Number(f.properties.DeCodigo))], 'map-lbl-dep'); }
+function pintarEtiquetasMuni(){ if(!mapa||E.nivel!=='Departamental') return;
+  pintarEtiquetas(munsPorDep.get(E.depto)||[],
+    f=>f.properties.MpNombre, f=>AREAS.muni[String(Number(f.properties.MpCodigo))], 'map-lbl-mun'); }
 function leyendaChoro(cortes,usaBins){
   const cont=$('#leyendaMapa'); if(!usaBins||cortes.length<3){ cont.innerHTML=''; return; }
   const esTec=E.metodo==='Rangos técnicos (alerta)';
@@ -1051,25 +1067,30 @@ function puntosFiltrados(){ const pts=[];
 function mapaDepartamental(){
   const pts=puntosFiltrados();
   const munis=munsPorDep.get(E.depto)||[];
-  // heat
+  // heat (sin capturar clics, para que lleguen a los municipios)
   if(pts.length){ const heat=pts.map(i=>[D.LAT[i],D.LON[i],1]);
-    capaCalor=L.heatLayer(heat,{radius:12,blur:18,minOpacity:.3}).addTo(mapa); }
-  // municipios (límites internos)
+    capaCalor=L.heatLayer(heat,{radius:12,blur:18,minOpacity:.3}).addTo(mapa);
+    if(capaCalor._canvas) capaCalor._canvas.style.pointerEvents='none'; }
+  // municipios (límites internos): hover resalta, clic selecciona el municipio
   if(munis.length){ capaMunis=L.geoJSON({type:'FeatureCollection',features:munis},
     {style:{color:'#9aa6b2',weight:1,fillColor:'#fff',fillOpacity:.01,dashArray:'3'},
-     onEachFeature:(f,l)=>{ l.bindTooltip(f.properties.MpNombre,{sticky:true});
+     onEachFeature:(f,l)=>{ l.bindTooltip(`${f.properties.MpNombre} — clic para ver el municipio`,{sticky:true});
        l.on('mouseover',()=>l.setStyle({color:'#1f3b57',weight:2,fillOpacity:.08}));
-       l.on('mouseout',()=>l.setStyle({color:'#9aa6b2',weight:1,fillOpacity:.01})); }}).addTo(mapa);
+       l.on('mouseout',()=>l.setStyle({color:'#9aa6b2',weight:1,fillOpacity:.01}));
+       l.on('click',()=>{ const cm=Number(f.properties.MpCodigo);
+         E.nivel='Municipal'; E.muni=cm;
+         document.querySelector('input[name=nivel][value=Municipal]').checked=true; actualizar(); }); }}).addTo(mapa);
   }
-  // Perímetro del departamento (contorno marcado, por encima)
+  // Perímetro del departamento (contorno marcado, por encima; no captura clics)
   const depFeat=gjDep.features.filter(f=>Number(f.properties.DeCodigo)===E.depto);
   if(depFeat.length){ capaContorno=contornoDe(depFeat).addTo(mapa);
     try{ mapa.fitBounds(capaContorno.getBounds(),{padding:[20,20]}); }catch(e){} }
   else if(munis.length){ try{ mapa.fitBounds(capaMunis.getBounds(),{padding:[20,20]}); }catch(e){} }
-  $('#leyendaMapa').innerHTML='<b>Densidad de incendios</b>: concentración de eventos por zona (azul=baja → rojo=alta).';
+  pintarEtiquetasMuni();     // nombres de municipios (anti-solapamiento; más al hacer zoom)
+  $('#leyendaMapa').innerHTML='<b>Densidad de incendios</b>: concentración de eventos por zona. Pasa el cursor sobre un municipio y haz <b>clic</b> para abrirlo.';
 }
 function contornoDe(features){ return L.geoJSON({type:'FeatureCollection',features},
-  {style:{color:'#1f3b57',weight:3,fillOpacity:0}}); }
+  {interactive:false, style:{color:'#1f3b57',weight:3,fill:false}}); }
 function mapaMunicipal(){
   const pts=puntosFiltrados();
   const muniFeat=(munsPorDep.get(E.depto)||[]).filter(f=>Number(f.properties.MpCodigo)===E.muni);
@@ -1533,8 +1554,7 @@ async function generarPDF(){
     parrafo('Los GeoVisores de la UNGRD facilitan al público el acceso, consulta y visualización de '+
       'información geográfica relacionada con la gestión del riesgo de desastres en Colombia. La información '+
       'tiene carácter informativo y de apoyo a la toma de decisiones; su uso e interpretación es responsabilidad '+
-      'del usuario. La UNGRD no garantiza que esté libre de errores y podrá actualizarla sin previo aviso. '+
-      'Respete los derechos de autor y cite adecuadamente la fuente.',9);
+      'del usuario. La UNGRD no garantiza que esté libre de errores y podrá actualizarla sin previo aviso.',9);
     y+=4; doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.text('UNIDAD NACIONAL PARA LA GESTIÓN DEL RIESGO DE DESASTRES - UNGRD',MG,y); y+=8;
     parrafo('Realizado por: Jorge Alpala (jorge.alpala@gestiondelriesgo.gov.co, UNGRD - SCR). Elaboración: 2026.',9);
     parrafo('Fuentes y créditos: Datos: OroraTech WildFire Solution (WFS). Límites: DIVIPOLA - DANE. '+
