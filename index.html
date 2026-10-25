@@ -1499,6 +1499,22 @@ async function generarPDF(){
       return {data:tmp.toDataURL('image/jpeg',0.92),fmt:'JPEG',w:wmm,h:wmm*ch.height/ch.width}; };
     const imgHtml=async(sel,wmm)=>{ const el=$(sel); if(!el||!el.offsetHeight) return null;
       const c=await capturar(el); return {data:c.toDataURL('image/jpeg',.92),fmt:'JPEG',w:wmm,h:wmm*c.height/c.width}; };
+    // imagen de un gráfico ECharts (treemap, gauge, calendario) con su método nativo
+    const imgEC=(ec,wmm)=>{ if(!ec) return null; try{
+      return {data:ec.getDataURL({type:'png',backgroundColor:'#fff',pixelRatio:2}),fmt:'PNG',w:wmm,h:wmm*ec.getHeight()/ec.getWidth()};
+    }catch(e){ return null; } };
+    // captura un panel que contiene gráficas Chart.js (sustituye sus canvas por imagen)
+    const imgHtmlCharts=async(sel,wmm)=>{ const el=$(sel); if(!el||!el.offsetHeight) return null;
+      const swaps=[];
+      el.querySelectorAll('canvas').forEach(cv=>{ const ch=charts[cv.id]; if(!ch) return; try{ch.draw();}catch(e){}
+        const src=ch.canvas, tmp=document.createElement('canvas'); tmp.width=src.width; tmp.height=src.height;
+        const cx=tmp.getContext('2d'); cx.fillStyle='#fff'; cx.fillRect(0,0,tmp.width,tmp.height); cx.drawImage(src,0,0);
+        const img=document.createElement('img'); img.src=tmp.toDataURL('image/png');
+        img.style.width=cv.clientWidth+'px'; img.style.height=cv.clientHeight+'px'; img.style.display='block';
+        cv.style.display='none'; cv.parentNode.insertBefore(img,cv); swaps.push({cv,img}); });
+      await new Promise(r=>setTimeout(r,30));
+      let c; try{ c=await capturar(el); } finally{ swaps.forEach(s=>{ s.img.remove(); s.cv.style.display=''; }); }
+      return {data:c.toDataURL('image/jpeg',.92),fmt:'JPEG',w:wmm,h:wmm*c.height/c.width}; };
     const put=(im,center=true)=>{ if(!im) return; if(im.h>PH-2*MG-10){ const k=(PH-2*MG-10)/im.h; im.h*=k; im.w*=k; }
       ensure(im.h+3); doc.addImage(im.data,im.fmt,center?MG+(cw-im.w)/2:MG,y,im.w,im.h); y+=im.h+5; };
     const tabla=(head,body)=>{ doc.autoTable({head,body,startY:y,margin:{left:MG,right:MG},
@@ -1537,7 +1553,21 @@ async function generarPDF(){
     // ---------- KPIs (tabla) ----------
     tabla([['Eventos','Área total (ha)','Área prom. (ha)','% conf. >=0.6']],
       [[$('#kpiEventos').textContent,$('#kpiArea').textContent,$('#kpiAreaProm').textContent,$('#kpiAlta').textContent]]);
-    doc.setFont('helvetica','bold');
+
+    // ---------- MONITOREO RECIENTE ----------
+    heading('Monitoreo reciente');
+    put(await imgHtml('#alertaBox', cw), false);
+    put(await imgHtmlCharts('#panelTend', cw), false);
+    if(E.nivel!=='Nacional' && gaugeEC){
+      subtit('Territorio seleccionado: '+ambitoTxt());
+      const g=imgEC(gaugeEC, 42);
+      if(g){ ensure(g.h+2); doc.addImage(g.data,g.fmt,MG,y,g.w,g.h);
+        const sk=[...document.querySelectorAll('#selKpis .sk')].map(e=>({k:e.querySelector('.k').textContent, v:e.querySelector('.v').textContent}));
+        let ty=y+5; doc.setFontSize(9);
+        sk.forEach(o=>{ doc.setTextColor(120); doc.text(textoLimpio(o.k), MG+g.w+8, ty);
+          doc.setTextColor(0); doc.setFont('helvetica','bold'); doc.text(textoLimpio(o.v), MG+g.w+8, ty+4.5); doc.setFont('helvetica','normal'); ty+=11; });
+        y+=Math.max(g.h, sk.length*11)+4; }
+    }
 
     // ---------- MAPA ----------
     heading('Mapa');
@@ -1546,12 +1576,21 @@ async function generarPDF(){
     put(await imgHtml('#mapa',150));
     const ley=$('#leyendaMapa'); if(ley && ley.textContent.trim()){ put(await imgHtml('#leyendaMapa',cw),false); }
 
+    // ---------- AFECTACIÓN POR TERRITORIO (treemap + registro) ----------
+    if(treemapEC){ doc.addPage(); y=MG;
+      heading('Afectación por territorio');
+      nota('Tamaño del rectángulo proporcional a la métrica ('+(E.treeK==='area'?'área quemada':'nº de eventos')+'); agrupado por departamento.');
+      put(imgEC(treemapEC, cw));
+      const reg=tablaDOM('#registro',15); if(reg&&reg.body.length){ subtit('Registro de municipios'); tabla(reg.head,reg.body); }
+    }
+
     // ---------- ANÁLISIS ----------
     doc.addPage(); y=MG;
     heading('Análisis');
     put(imgChart('chConf',120));
     put(imgChart('chMes',120));
     put(imgChart('chDia',175));
+    put(imgChart('chTrim',175));   // serie mensual continua
 
     // ---------- COMPARATIVO POR AÑO ----------
     if($('#secAnual') && $('#secAnual').offsetHeight && charts['chTortaEv']){
@@ -1563,6 +1602,13 @@ async function generarPDF(){
         doc.addImage(b.data,b.fmt,MG+cw/2+(cw/2-b.w)/2,y,b.w,b.h); y+=h+6; } };
       par(imgChart('chTortaEv',82), imgChart('chTortaAr',82));
       par(imgChart('chBarraEv',88), imgChart('chBarraAr',88));
+    }
+
+    // ---------- CALENDARIO DE ACTIVIDAD ----------
+    if(calHeatEC){ doc.addPage(); y=MG;
+      heading('Calendario de actividad (estacionalidad diaria)');
+      nota('Cada celda es un día; el color indica el nº de eventos (escala acotada al percentil 98). Un panel por año.');
+      put(imgEC(calHeatEC, cw));
     }
 
     // ---------- TOPS ----------
@@ -1580,11 +1626,13 @@ async function generarPDF(){
       subtit('2. Mapa de calor de estacionalidad'); put(await imgHtml('#heatEstac',cw),false);
       subtit('3. Municipios reincidentes'); const tri=tablaDOM('#tblReinc'); if(tri&&tri.body.length) tabla(tri.head,tri.body);
       subtit('4. Distribución histórica por mes'); put(imgChart('chCal',130));
+      const pr=tablaDOM('#tblPrior',15);
+      if(pr&&pr.body.length){ subtit('5. Índice de priorización para vigilancia'); tabla(pr.head,pr.body); }
     }
 
     // ---------- TABLA DE EVENTOS ----------
     doc.addPage(); y=MG;
-    heading('Principales eventos (por área)');
+    heading('Tabla de eventos');
     const te=tablaDOM('#tblEventos',20); if(te) tabla(te.head,te.body);
 
     // ---------- TÉRMINOS / CRÉDITOS ----------
@@ -1597,7 +1645,7 @@ async function generarPDF(){
     y+=4; doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.text('UNIDAD NACIONAL PARA LA GESTIÓN DEL RIESGO DE DESASTRES - UNGRD',MG,y); y+=8;
     parrafo('Realizado por: Jorge Alpala (jorge.alpala@gestiondelriesgo.gov.co, UNGRD - SCR). Elaboración: 2026.',9);
     parrafo('Fuentes y créditos: Datos: OroraTech WildFire Solution (WFS). Límites: DIVIPOLA - DANE. '+
-      'Desarrollado con Leaflet, Chart.js, hyparquet y jsPDF. Mapa base: Esri, OpenStreetMap.',9);
+      'Desarrollado con Leaflet, Chart.js, ECharts, hyparquet y jsPDF. Mapa base: Esri, OpenStreetMap.',9);
     parrafo('Cómo citar: Alpala, J. (2026). Incendios Forestales - Colombia: GeoVisor de monitoreo y análisis '+
       'de incendios con datos de WildFire Solution (OroraTech). UNGRD - Subdirección para el Conocimiento del Riesgo.',9);
 
