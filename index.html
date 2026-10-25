@@ -995,8 +995,8 @@ function descargarCSV(){
   const filas=[];
   for(let i=0;i<D.n;i++){ if(maskBase[i]&&geoOK(i)) filas.push(i); }
   filas.sort((a,b)=>D.AREA[b]-D.AREA[a]);
-  let csv='departamento,municipio,area,confidence,num_fires,fecha\n';
-  filas.forEach(i=>{ csv+=`"${nomDep.get(D.CD[i])||''}","${nomMun.get(D.CM[i])||''}",${D.AREA[i].toFixed(2)},${(D.CONF[i]/10).toFixed(1)},${D.NF[i]},${yyyymmdd_a_iso(D.F[i])}\n`; });
+  let csv='departamento,municipio,lat,lon,area,confidence,num_fires,fecha\n';
+  filas.forEach(i=>{ csv+=`"${nomDep.get(D.CD[i])||''}","${nomMun.get(D.CM[i])||''}",${D.LAT[i].toFixed(5)},${D.LON[i].toFixed(5)},${D.AREA[i].toFixed(2)},${(D.CONF[i]/10).toFixed(1)},${D.NF[i]},${yyyymmdd_a_iso(D.F[i])}\n`; });
   const blob=new Blob([csv],{type:'text/csv;charset=utf-8'}); const a=document.createElement('a');
   a.href=URL.createObjectURL(blob); a.download='incendios_seleccion.csv'; a.click(); URL.revokeObjectURL(a.href);
 }
@@ -1146,7 +1146,7 @@ function mapaMunicipal(){
     pts.forEach(i=>{ const col=COLOR_CONF[D.CONF[i]]||'#95a5a6';
       const r=4+(D.AREA[i]>0?Math.sqrt(D.AREA[i])/4:0);
       const mk=L.circleMarker([D.LAT[i],D.LON[i]],{radius:Math.min(r,18),color:col,fillColor:col,fillOpacity:.7,weight:1});
-      mk.bindTooltip(`Confianza: ${(D.CONF[i]/10).toFixed(1)} · Área: ${fmt1(D.AREA[i])} ha · Focos: ${D.NF[i]}`);
+      mk.bindTooltip(`Confianza: ${(D.CONF[i]/10).toFixed(1)} · Área: ${fmt1(D.AREA[i])} ha · Focos: ${D.NF[i]} · Lat: ${D.LAT[i].toFixed(5)}, Lon: ${D.LON[i].toFixed(5)}`);
       marks.push(mk); });
     if(agrupar){ cont.addLayers(marks); } else { marks.forEach(m=>m.addTo(cont)); }
     cont.addTo(mapa);
