@@ -764,8 +764,9 @@ function gAnual(){
   nuevoChart('chTortaEv',{type:'doughnut',data:{labels,datasets:[{data:res.map(r=>r.eventos),backgroundColor:colores}]},options:donut});
   nuevoChart('chTortaAr',{type:'doughnut',data:{labels,datasets:[{data:res.map(r=>r.area),backgroundColor:colores}]},options:donut});
   // barras con variacion %
-  const barOpt=(fmtv)=>({maintainAspectRatio:false,responsive:true,plugins:{legend:{display:false},
-    tooltip:{callbacks:{label:c=>fmtv(c.raw)}}},scales:{x:{grid:{display:false}},y:{beginAtZero:true,grid:{color:'#eef1f4'}}}});
+  const barOpt=(fmtv)=>({maintainAspectRatio:false,responsive:true,layout:{padding:{top:16}},plugins:{legend:{display:false},
+    tooltip:{callbacks:{label:c=>fmtv(c.raw)}}},scales:{x:{grid:{display:false}},
+    y:{beginAtZero:true,grace:'12%',grid:{color:'#eef1f4'}}}});
   const varPct=arr=>arr.map((v,i)=>i? (arr[i-1]? (100*(v-arr[i-1])/arr[i-1]):null):null);
   const evArr=res.map(r=>r.eventos), arArr=res.map(r=>r.area);
   const vpEv=varPct(evArr), vpAr=varPct(arArr);
