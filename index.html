@@ -346,6 +346,14 @@ footer ul{margin:6px 0;padding-left:18px}
           <div class="cap" id="capPico"></div>
         </div>
       </div>
+
+      <div class="card" style="margin-top:16px"><h4>5. Índice de priorización para vigilancia</h4>
+        <div class="cap" style="margin-top:-2px">Puntaje 0–100 que combina <b>recurrencia</b> (años activos, 25%),
+          <b>actividad reciente</b> (últimos 12 meses, 30%), <b>magnitud</b> (área quemada, 25%) e
+          <b>intensidad</b> (densidad, 20%). Usa todo el histórico; respeta el nivel y la confianza.
+          Mayor puntaje = mayor prioridad de vigilancia.</div>
+        <div class="tbl-wrap" style="margin-top:8px;max-height:460px"><table class="reg" id="tblPrior"></table></div>
+      </div>
     </div>
 
     <hr class="divisor">
@@ -811,6 +819,55 @@ function interpOrange(t){ // 0..1 -> blanco->naranja oscuro
   return `rgb(${r},${g},${b})`;
 }
 
+/* ====================== ÍNDICE DE PRIORIZACIÓN ======================
+   Puntaje 0-100 por municipio = ponderado de 4 componentes normalizados
+   (min-max entre municipios del ámbito): recurrencia (años activos, 25%),
+   actividad reciente (eventos últimos 12 meses, 30%), magnitud (área, 25%) e
+   intensidad (densidad, 20%). Usa TODO el histórico; respeta nivel y confianza. */
+const PESOS_PRIOR = {R:.25, A:.30, M:.25, I:.20};
+function indicePriorizacion(){
+  const t=$('#tblPrior'); if(!t) return;
+  if(E.nivel==='Municipal') return;                       // la sección va oculta
+  const scopeDept=(E.nivel==='Departamental')?E.depto:null;
+  const cs=confsActivas();
+  const cutoff=F_MAX-10000;                               // últimos ~12 meses (F > cutoff)
+  const m=new Map();
+  for(let i=0;i<D.n;i++){
+    if(!cs.has(D.CONF[i])) continue;
+    const cm=D.CM[i]; if(!cm) continue;
+    if(scopeDept!=null && D.CD[i]!==scopeDept) continue;
+    let o=m.get(cm); if(!o){ o={cm,cd:D.CD[i],ev:0,area:0,anios:new Set(),reciente:0}; m.set(cm,o); }
+    o.ev++; o.area+=D.AREA[i]; o.anios.add(D.YR[i]); if(D.F[i]>cutoff) o.reciente++;
+  }
+  let rows=[...m.values()].map(o=>{ const am=AREAS.muni[String(o.cm)]||0;
+    return {cm:o.cm,cd:o.cd,nombre:nomMun.get(o.cm)||String(o.cm),depto:nomDep.get(o.cd)||'',
+      recur:o.anios.size, reciente:o.reciente, area:o.area, ev:o.ev, dens: am>0?o.ev/(am/1000):0 }; });
+  if(!rows.length){ t.innerHTML='<tbody><tr><td style="padding:10px">Sin datos para el ámbito seleccionado.</td></tr></tbody>'; return; }
+  const norm=arr=>{ const mx=Math.max(...arr), mn=Math.min(...arr), r=mx-mn; return v=> r>0?100*(v-mn)/r:0; };
+  const nR=norm(rows.map(r=>r.recur)), nA=norm(rows.map(r=>r.reciente)), nM=norm(rows.map(r=>r.area)), nI=norm(rows.map(r=>r.dens));
+  const W=PESOS_PRIOR;
+  rows.forEach(r=>{ r.score=+(W.R*nR(r.recur)+W.A*nA(r.reciente)+W.M*nM(r.area)+W.I*nI(r.dens)).toFixed(1); });
+  rows.sort((a,b)=>b.score-a.score);
+  const colScore=s=> s>=66?'#c0392b':(s>=33?'#e67e22':'#27ae60');
+  const nivelTxt=s=> s>=66?'Alta':(s>=33?'Media':'Baja');
+  let html='<thead><tr><th>#</th><th>Municipio</th><th>Departamento</th><th class="num">Puntaje</th>'+
+    '<th class="num">Años activos</th><th class="num">Eventos 12m</th><th class="num">Área (ha)</th><th class="num">Densidad</th></tr></thead><tbody>';
+  rows.slice(0,25).forEach((r,i)=>{ const col=colScore(r.score);
+    html+=`<tr data-cm="${r.cm}" data-cd="${r.cd}"><td class="num">${i+1}</td>`
+      +`<td>${r.nombre}</td><td>${r.depto}</td>`
+      +`<td class="num"><span class="bar-wrap"><span class="bar-track"><span class="bar-fill" style="width:${Math.round(r.score)}%;background:${col}"></span></span>`
+        +`<b style="color:${col}">${r.score.toFixed(0)}</b> <span style="color:#8a98a6">${nivelTxt(r.score)}</span></span></td>`
+      +`<td class="num">${r.recur}</td><td class="num">${fmt(r.reciente)}</td>`
+      +`<td class="num">${fmt0(r.area)}</td><td class="num">${r.dens.toFixed(2)}</td></tr>`;
+  });
+  html+='</tbody>'; t.innerHTML=html;
+  // clic en fila -> ir al municipio
+  t.querySelectorAll('tbody tr[data-cm]').forEach(tr=>tr.onclick=()=>{ const cm=+tr.dataset.cm, cd=+tr.dataset.cd;
+    E.nivel='Municipal'; E.depto=cd; E.muni=cm;
+    document.querySelector('input[name=nivel][value=Municipal]').checked=true; actualizar();
+    document.querySelector('#mapa').scrollIntoView({behavior:'smooth',block:'center'}); });
+}
+
 /* ====================== TABLA ====================== */
 function pintarTabla(){
   const filas=[];
@@ -1028,6 +1085,7 @@ function actualizar(){
   treemapRender(); registroRender();
   gConfianza(); gMes(); gMesSerie(); gDia(); gAnual(); gTops();
   seccionRiesgo();
+  indicePriorizacion();
   pintarTabla();
 }
 
