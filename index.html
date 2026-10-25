@@ -616,7 +616,9 @@ function gConfianza(){
   const niveles=ORDEN_CONF.filter(c=>cs.has(c));
   nuevoChart('chConf',{type:'bar',data:{labels:niveles.map(c=>ETIQ_CONF[c].split(' ')[0]),
     datasets:[{data:niveles.map(c=>cnt[c]),backgroundColor:niveles.map(c=>COLOR_CONF[c])}]},
-    options:ejeComun});
+    options:{maintainAspectRatio:false,responsive:true,plugins:{legend:{display:false}},
+      scales:{x:{grid:{display:false},title:{display:true,text:'Nivel de confianza'}},
+        y:{beginAtZero:true,grid:{color:'#eef1f4'},title:{display:true,text:'N° de eventos'}}}}});
 }
 
 function gMes(){
@@ -634,7 +636,8 @@ function gMes(){
   nuevoChart('chMes',{type:'line',data:{labels:MESES,datasets:ds},
     options:{maintainAspectRatio:false,responsive:true,
       plugins:{legend:{position:'bottom',labels:{boxWidth:12,font:{size:10}}}},
-      scales:{x:{grid:{display:false}},y:{beginAtZero:true,grid:{color:'#eef1f4'}}}}});
+      scales:{x:{grid:{display:false},title:{display:true,text:'Mes'}},
+        y:{beginAtZero:true,grid:{color:'#eef1f4'},title:{display:true,text:'N° de eventos'}}}}});
 }
 
 /* Serie MENSUAL continua de eventos (todos los meses del periodo seleccionado),
@@ -819,14 +822,25 @@ function gHistArea(id){
   const s=vals.slice().sort((a,b)=>a-b); const cap=cuantil(s,0.98)||1;
   const nb=25, w=cap/nb, bins=new Array(nb).fill(0);
   vals.forEach(v=>{ let b=Math.min(nb-1,Math.floor(Math.min(v,cap)/w)); bins[b]++; });
-  nuevoChart(id,{type:'bar',data:{labels:bins.map((_,i)=>fmt0(i*w)),
-    datasets:[{data:bins,backgroundColor:'#e67e22'}]},options:ejeComun});
+  // Etiquetas como RANGOS de área (el último incluye todo lo que supera el tope)
+  const rango=i=> i===nb-1 ? `≥ ${fmt0(i*w)}` : `${fmt0(i*w)}–${fmt0((i+1)*w)}`;
+  nuevoChart(id,{type:'bar',data:{labels:bins.map((_,i)=>rango(i)),
+    datasets:[{data:bins,backgroundColor:'#e67e22'}]},
+    options:{maintainAspectRatio:false,responsive:true,
+      plugins:{legend:{display:false},
+        tooltip:{callbacks:{title:it=>`${rango(it[0].dataIndex)} ha`, label:c=>`${fmt(c.raw)} eventos`}}},
+      scales:{x:{grid:{display:false},title:{display:true,text:'Área del evento (ha)'},
+          ticks:{maxRotation:0,autoSkip:true,maxTicksLimit:13}},
+        y:{beginAtZero:true,grid:{color:'#eef1f4'},title:{display:true,text:'N° de eventos'}}}}});
 }
 function gAreaMes(id){
   const porMes=new Array(12).fill(0);
   for(let i=0;i<D.n;i++){ if(maskBase[i]&&geoOK(i)) porMes[D.MO[i]-1]+=D.AREA[i]; }
   nuevoChart(id,{type:'bar',data:{labels:MESES,datasets:[{data:porMes,backgroundColor:'#16a085'}]},
-    options:{...ejeComun,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>fmt0(c.raw)+' ha'}}}}});
+    options:{maintainAspectRatio:false,responsive:true,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>fmt0(c.raw)+' ha'}}},
+      scales:{x:{grid:{display:false},title:{display:true,text:'Mes'}},
+        y:{beginAtZero:true,grid:{color:'#eef1f4'},title:{display:true,text:'Área quemada (ha)'}}}}});
 }
 
 /* ====================== GESTION DEL RIESGO ====================== */
