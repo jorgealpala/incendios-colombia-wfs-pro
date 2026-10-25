@@ -34,18 +34,24 @@ Todo el procesamiento ocurre **en el navegador**: no hay backend ni base de dato
 incendios-colombia-wfs-pro/
 ├── index.html         # El visor completo (autocontenido: HTML + CSS + JS)
 ├── generar_datos.py   # Build: genera data/wfs/ desde el proyecto Streamlit original
+├── METODOLOGIA.md     # Fórmulas y métodos de cálculo de cada indicador
 ├── .nojekyll          # GitHub Pages: servir los archivos tal cual
 ├── logo/
 │   └── ungrd-horizontal.png
 └── data/
     └── wfs/
         ├── incendios_web.parquet            # tabla ligera (hyparquet, 8 columnas)
+        ├── areas.json                       # área (ha) por municipio/depto (densidad, %)
         ├── departamentos_simplificado.geojson
         └── municipios_simplificado.geojson
 ```
 
+> 📐 **Metodología**: todas las fórmulas y métodos de cálculo (KPIs, clasificación del mapa,
+> densidad, índice de priorización, anomalía, medias móviles, calendario, etc.) están
+> documentadas en **[`METODOLOGIA.md`](METODOLOGIA.md)**.
+
 ### Tecnologías (CDN, sin build de JS)
-Leaflet 1.9 (+heat, +markercluster) · Chart.js 4 · **hyparquet** (lee Parquet en el navegador) ·
+Leaflet 1.9 (+heat, +markercluster) · Chart.js 4 · **ECharts 5** (treemap, gauge, calendario) · **hyparquet** (lee Parquet en el navegador) ·
 jsPDF + html2canvas (PDF) · tiles base **Esri World Light Gray** / OpenStreetMap.
 
 ---

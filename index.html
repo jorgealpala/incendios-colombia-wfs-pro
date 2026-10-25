@@ -299,6 +299,10 @@ footer ul{margin:6px 0;padding-left:18px}
       <div class="chart-box alta"><canvas id="chDia"></canvas></div>
       <div class="cap">Línea gris: eventos diarios. Línea roja: promedio móvil de 7 días.</div></div>
 
+    <div class="card" style="margin-top:16px"><h4>🗓️ Calendario de actividad (estacionalidad diaria)</h4>
+      <div id="calHeat" style="width:100%"></div>
+      <div class="cap" id="calCap"></div></div>
+
     <div id="secAnual">
       <div class="seccion-tit" style="font-size:14px">Análisis comparativo por año</div>
       <div class="cap" id="notaParcial" style="margin:-4px 0 10px"></div>
@@ -445,7 +449,7 @@ let AREAS={muni:{},depto:{}};                // area (ha) por codigo
 let F_MIN=0, F_MAX=0;                         // yyyymmdd
 const charts={};
 let mapa, capaChoro, capaMunis, capaContorno, capaCalor, capaPuntos, capaCluster, capaLabels, baseEsri, baseOSM;
-let treemapEC=null, gaugeEC=null;            // instancias ECharts
+let treemapEC=null, gaugeEC=null, calHeatEC=null;   // instancias ECharts
 let regRows=[];                              // filas del registro (para ordenar/buscar)
 
 /* ====================== UTILIDADES ====================== */
@@ -654,6 +658,49 @@ function gDia(){
     options:{maintainAspectRatio:false,responsive:true,
       plugins:{legend:{position:'bottom',labels:{boxWidth:12,font:{size:10}}}},
       scales:{x:{grid:{display:false},ticks:{maxTicksLimit:10}},y:{beginAtZero:true,grid:{color:'#eef1f4'}}}}});
+}
+
+/* ====================== CALENDARIO DE ACTIVIDAD (ECharts) ======================
+   Mapa de calor tipo calendario: un panel por año; cada celda = un día, color
+   por nº de eventos. Respeta nivel, confianza y rango de fechas. La escala de
+   color se acota al percentil 98 diario para que un día pico no aplane el resto. */
+function gCalendario(){
+  const el=$('#calHeat'); if(!el) return;
+  const porDia=new Map();            // yyyymmdd -> nº eventos
+  for(let i=0;i<D.n;i++){ if(maskBase[i]&&geoOK(i)){ const f=D.F[i]; porDia.set(f,(porDia.get(f)||0)+1); } }
+  if(!porDia.size){ if(calHeatEC) calHeatEC.clear(); el.style.height='60px';
+    $('#calCap').textContent='Sin datos para el periodo seleccionado.'; return; }
+  const porAnio={}; const vals=[];
+  for(const [f,v] of porDia){ const y=Math.floor(f/10000),
+      mo=String(Math.floor(f/100)%100).padStart(2,'0'), d=String(f%100).padStart(2,'0');
+    (porAnio[y]=porAnio[y]||[]).push([`${y}-${mo}-${d}`, v]); vals.push(v); }
+  vals.sort((a,b)=>a-b);
+  const p98 = vals[Math.min(vals.length-1, Math.floor(vals.length*0.98))] || 1;  // tope de la escala
+  const anios=Object.keys(porAnio).map(Number).sort();
+  const CELL=13, YEARH=150;
+  const calendars=[], series=[];
+  anios.forEach((y,idx)=>{
+    calendars.push({ top: 20+idx*YEARH, left:70, right:30, cellSize:[CELL,CELL], range:String(y),
+      splitLine:{show:true,lineStyle:{color:'#fff',width:2}},
+      itemStyle:{color:'#f1f4f7',borderColor:'#fff',borderWidth:1},
+      yearLabel:{show:true, margin:42, fontSize:13, color:'#1f3b57', fontWeight:'bold'},
+      monthLabel:{nameMap:['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'], fontSize:10, color:'#5b6878'},
+      dayLabel:{firstDay:1, nameMap:['D','L','M','X','J','V','S'], fontSize:9, color:'#9aa6b2'} });
+    series.push({ type:'heatmap', coordinateSystem:'calendar', calendarIndex:idx, data:porAnio[y] });
+  });
+  el.style.height = (30 + anios.length*YEARH + 30)+'px';
+  if(!calHeatEC) calHeatEC=echarts.init(el);
+  calHeatEC.setOption({
+    tooltip:{formatter:p=>{ const d=new Date(p.data[0]); const dn=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'][d.getUTCDay()];
+      return `${dn} ${p.data[0]}<br><b>${fmt(p.data[1])}</b> eventos`; }},
+    visualMap:{min:0, max:p98, type:'continuous', orient:'horizontal', left:'center', bottom:4,
+      itemWidth:14, itemHeight:140, calculable:true, precision:0, text:['más','menos'],
+      inRange:{color:['#ffffcc','#fed976','#fd8d3c','#f03b20','#bd0026','#7a0019']}, textStyle:{fontSize:10,color:'#5b6878'}},
+    calendar:calendars, series
+  }, true);
+  calHeatEC.resize();
+  $('#calCap').textContent = `Cada celda es un día; el color indica el nº de eventos (escala acotada al percentil 98: ${fmt(p98)}). `+
+    `Un panel por año. Respeta el nivel, la confianza y el rango de fechas seleccionados.`;
 }
 
 function resumenAnual(){
@@ -1083,7 +1130,7 @@ function actualizar(){
   actualizarMapa();
   construirRegistro();        // agrega por municipio (alimenta treemap + registro)
   treemapRender(); registroRender();
-  gConfianza(); gMes(); gMesSerie(); gDia(); gAnual(); gTops();
+  gConfianza(); gMes(); gMesSerie(); gDia(); gCalendario(); gAnual(); gTops();
   seccionRiesgo();
   indicePriorizacion();
   pintarTabla();
@@ -1500,7 +1547,7 @@ function construirControles(){
   // Registro: búsqueda en vivo
   $('#regBuscar').addEventListener('input',e=>{ E.regQ=e.target.value; registroRender(); });
   // Redimensionar ECharts al cambiar el tamaño de ventana
-  window.addEventListener('resize',()=>{ if(treemapEC)treemapEC.resize(); if(gaugeEC)gaugeEC.resize(); });
+  window.addEventListener('resize',()=>{ if(treemapEC)treemapEC.resize(); if(gaugeEC)gaugeEC.resize(); if(calHeatEC)calHeatEC.resize(); });
   $('#btnPDF').addEventListener('click',generarPDF);
   $('#btnCSV').addEventListener('click',descargarCSV);
 }
