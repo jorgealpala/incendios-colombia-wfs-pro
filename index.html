@@ -1146,7 +1146,7 @@ function mapaMunicipal(){
     pts.forEach(i=>{ const col=COLOR_CONF[D.CONF[i]]||'#95a5a6';
       const r=4+(D.AREA[i]>0?Math.sqrt(D.AREA[i])/4:0);
       const mk=L.circleMarker([D.LAT[i],D.LON[i]],{radius:Math.min(r,18),color:col,fillColor:col,fillOpacity:.7,weight:1});
-      mk.bindTooltip(`Confianza: ${(D.CONF[i]/10).toFixed(1)} · Área: ${fmt1(D.AREA[i])} ha · Focos: ${D.NF[i]} · Lat: ${D.LAT[i].toFixed(5)}, Lon: ${D.LON[i].toFixed(5)}`);
+      mk.bindTooltip(`Fecha: ${yyyymmdd_a_iso(D.F[i])} · Confianza: ${(D.CONF[i]/10).toFixed(1)} · Área: ${fmt1(D.AREA[i])} ha · Focos: ${D.NF[i]} · Lat: ${D.LAT[i].toFixed(5)}, Lon: ${D.LON[i].toFixed(5)}`);
       marks.push(mk); });
     if(agrupar){ cont.addLayers(marks); } else { marks.forEach(m=>m.addTo(cont)); }
     cont.addTo(mapa);
