@@ -50,6 +50,12 @@ table.reg tr.sel td{background:#eef3f8}
 .map-lbl-dep{font-size:11px;font-weight:700;color:#2c3e50;white-space:nowrap;letter-spacing:.02em;
   text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff,0 0 3px #fff;transform:translate(-50%,-50%);
   pointer-events:none;opacity:.9}
+.tend-tiles{display:flex;gap:20px;flex-wrap:wrap}
+.tend-tile{min-width:118px}
+.tend-tile .tt-lbl{font-size:11px;color:var(--gris)}
+.tend-tile .tt-val{font-size:22px;font-weight:700;color:var(--tinta);line-height:1.15}
+.tend-tile .tt-delta{font-size:14px;font-weight:700}
+.tend-tile .tt-prev{font-size:11px;color:#9aa6b2}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
@@ -232,6 +238,21 @@ footer ul{margin:6px 0;padding-left:18px}
 
     <!-- Tablero de anomalía / alerta temprana -->
     <div class="alerta" id="alertaBox"></div>
+
+    <!-- Tendencia reciente (aceleración) -->
+    <div class="card no-pdf" id="panelTend" style="margin-bottom:16px">
+      <div style="display:flex;flex-wrap:wrap;gap:22px;align-items:center">
+        <div style="min-width:150px">
+          <div class="mini" style="text-transform:uppercase;letter-spacing:.04em;font-weight:700;color:var(--tinta)">📈 Tendencia reciente</div>
+          <div style="font-size:12px;color:#8a98a6" id="tendRef"></div>
+        </div>
+        <div class="tend-tiles" id="tendTiles"></div>
+        <div style="flex:1;min-width:170px;max-width:460px">
+          <div style="position:relative;height:80px"><canvas id="chSpark"></canvas></div>
+        </div>
+      </div>
+      <div class="cap" id="tendCap" style="margin-top:6px"></div>
+    </div>
 
     <!-- Panel del territorio seleccionado (gauge) — Dep/Muni -->
     <div class="card oculto no-pdf" id="panelSel">
@@ -1126,6 +1147,7 @@ function actualizar(){
   $('#explicaMetodo').textContent = E.nivel==='Nacional' ? (EXPLICA[E.metodo]||'') : '';
   pintarKPIs();
   alertaAnomalia();
+  tendenciaReciente();
   panelSeleccionado();
   actualizarMapa();
   construirRegistro();        // agrega por municipio (alimenta treemap + registro)
@@ -1331,6 +1353,40 @@ function alertaAnomalia(){
     `(${ambito}).</div>`+
     `<div class="dato">Actual: <b>${fmt(actual)}</b> · Promedio ${mesNom} (${previos.length} años): <b>${fmt0(prom)}</b> · `+
     `<b style="color:${dif>=0?'#c0392b':'#27ae60'}">${dif>=0?'+':''}${dif.toFixed(0)}%</b></div>`;
+}
+
+/* ====================== TENDENCIA RECIENTE (ACELERACIÓN) ======================
+   Compara la actividad reciente con el periodo previo equivalente (7 y 30 días),
+   anclado al ÚLTIMO día con datos (F_MAX). Respeta nivel y confianza; es
+   independiente del rango de fechas. Más eventos = tendencia al alza (rojo). */
+function tendenciaReciente(){
+  const tiles=$('#tendTiles'); if(!tiles) return;
+  const diMax=diaIndex(F_MAX), cs=confsActivas();
+  const porDia=new Map();
+  for(let i=0;i<D.n;i++){ if(cs.has(D.CONF[i]) && geoOK(i)){ const d=D.DI[i]; porDia.set(d,(porDia.get(d)||0)+1); } }
+  const sumWin=(a,b)=>{ let s=0; for(let d=a;d<=b;d++) s+=porDia.get(d)||0; return s; };
+  const metr=W=>{ const rec=sumWin(diMax-W+1,diMax), prev=sumWin(diMax-2*W+1,diMax-W);
+    const pct= prev>0 ? 100*(rec-prev)/prev : (rec>0?100:0); return {W,rec,prev,pct,hayPrev:prev>0}; };
+  const T=[metr(7), metr(30)];
+  tiles.innerHTML=T.map(t=>{
+    const up=t.pct>10, down=t.pct<-10, col=up?'#c0392b':(down?'#27ae60':'#e67e22');
+    const ico=up?'▲':(down?'▼':'▬');
+    const delta = t.hayPrev ? `${ico} ${t.pct>=0?'+':''}${Math.round(t.pct)}%` : '—';
+    return `<div class="tend-tile"><div class="tt-lbl">Últimos ${t.W} días</div>`+
+      `<div class="tt-val">${fmt(t.rec)}</div>`+
+      `<div class="tt-delta" style="color:${col}">${delta}</div>`+
+      `<div class="tt-prev">vs ${fmt(t.prev)} previos</div></div>`;
+  }).join('');
+  $('#tendRef').textContent = `al ${yyyymmdd_a_iso(F_MAX).split('-').reverse().join('/')}`;
+  // sparkline: últimos 90 días
+  const labels=[], ev=[]; for(let d=diMax-89; d<=diMax; d++){ labels.push(''); ev.push(porDia.get(d)||0); }
+  nuevoChart('chSpark',{type:'line',data:{labels,datasets:[{data:ev,borderColor:'#c0392b',
+    backgroundColor:'rgba(192,57,43,0.10)',fill:true,pointRadius:0,borderWidth:1.3,tension:.3}]},
+    options:{maintainAspectRatio:false,responsive:true,plugins:{legend:{display:false},tooltip:{enabled:false}},
+      scales:{x:{display:false},y:{display:false,beginAtZero:true}}}});
+  const amb= E.nivel==='Nacional'?'nacional':(E.nivel==='Departamental'?(nomDep.get(E.depto)||''):(nomMun.get(E.muni)||''));
+  $('#tendCap').textContent = `Compara los eventos recientes con el periodo previo del mismo largo (${amb}); `+
+    `anclado al último día con datos. La mini-gráfica muestra los últimos 90 días. Independiente del rango de fechas.`;
 }
 
 /* ====================== PDF ======================

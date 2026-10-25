@@ -132,6 +132,23 @@ Semáforo: **↑ por encima** si `desv% > +10`; **↓ por debajo** si `desv% < �
 
 ---
 
+## 7.1 Tendencia reciente (aceleración)
+
+Compara la actividad **reciente** con el **periodo previo del mismo largo**, anclado al
+**último día con datos** (`F_MAX`). Respeta nivel y confianza; es independiente del rango
+de fechas. Para una ventana de `W` días (se usan `W = 7` y `W = 30`):
+
+```
+reciente = eventos en los últimos W días      = Σ eventos en [F_MAX−W+1 , F_MAX]
+previo   = eventos en los W días anteriores   = Σ eventos en [F_MAX−2W+1 , F_MAX−W]
+variación % (aceleración) = 100 · (reciente − previo) / previo
+```
+
+Lectura: **▲ al alza** (más incendios) si `var% > +10` (rojo); **▼ a la baja** si `var% < −10`
+(verde); **▬ estable** en el resto. Se acompaña de una *sparkline* con los **últimos 90 días**.
+
+---
+
 ## 8. Series de tiempo
 
 ### 8.1 Eventos por mes (comparativo por año)
