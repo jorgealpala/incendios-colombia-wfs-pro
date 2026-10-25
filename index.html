@@ -149,7 +149,9 @@ main{padding:18px 22px;min-width:0}
 
 table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
 table.tbl th,table.tbl td{padding:5px 8px;border-bottom:1px solid var(--linea);text-align:left}
+table.tbl th.num,table.tbl td.num{text-align:right}
 table.tbl th{background:var(--azul);color:#fff;position:sticky;top:0}
+table.tbl th[data-k]:hover{background:#2a4d6e}
 .tbl-wrap{max-height:420px;overflow:auto;border:1px solid var(--linea);border-radius:10px}
 
 .heat-estac{display:grid;gap:2px;font-size:11px}
@@ -385,7 +387,8 @@ footer ul{margin:6px 0;padding-left:18px}
     </div>
 
     <hr class="divisor">
-    <div class="seccion-tit" style="font-size:14px">Tabla de eventos (principales por área)</div>
+    <div class="seccion-tit" style="font-size:14px">Tabla de eventos</div>
+    <div class="cap" style="margin:-6px 0 6px">Haz clic en un encabezado para ordenar (asc/desc). Se muestran hasta 300 registros.</div>
     <div class="tbl-wrap"><table class="tbl" id="tblEventos"></table></div>
 
     <!-- ===== Registro de municipios (tabla ordenable/buscable) ===== -->
@@ -462,7 +465,8 @@ const EXPLICA = {
 const E = {
   anio:'Todos', fIni:0, fFin:0, nivel:'Nacional', depto:null, muni:null,
   confs:new Set(CONF_ALTA), insuf:false, metodo:'Cortes naturales (Jenks)',
-  vis:'Puntos agrupados', treeK:'area', regSort:'area', regDir:-1, regQ:'', trimAnios:new Set()
+  vis:'Puntos agrupados', treeK:'area', regSort:'area', regDir:-1, regQ:'', trimAnios:new Set(),
+  evSort:'area', evDir:-1
 };
 let D = null;              // datos compactos (TypedArrays)
 let gjDep=null, gjMun=null;
@@ -965,15 +969,27 @@ function indicePriorizacion(){
 
 /* ====================== TABLA ====================== */
 function pintarTabla(){
-  const filas=[];
-  for(let i=0;i<D.n;i++){ if(maskBase[i]&&geoOK(i)) filas.push(i); }
-  filas.sort((a,b)=>D.AREA[b]-D.AREA[a]);
-  const top=filas.slice(0,200);
-  $('#tblEventos').innerHTML =
-    `<thead><tr><th>Departamento</th><th>Municipio</th><th>Área (ha)</th><th>Confianza</th><th>N° focos</th><th>Inicio</th></tr></thead><tbody>`
-    + top.map(i=>`<tr><td>${nomDep.get(D.CD[i])||''}</td><td>${nomMun.get(D.CM[i])||''}</td>`
-      +`<td>${fmt1(D.AREA[i])}</td><td>${(D.CONF[i]/10).toFixed(1)}</td><td>${D.NF[i]}</td><td>${yyyymmdd_a_iso(D.F[i])}</td></tr>`).join('')
+  const t=$('#tblEventos'); if(!t) return;
+  let rows=[];
+  for(let i=0;i<D.n;i++){ if(maskBase[i]&&geoOK(i)) rows.push({
+    dep:nomDep.get(D.CD[i])||'', mun:nomMun.get(D.CM[i])||'',
+    area:D.AREA[i], conf:D.CONF[i]/10, nf:D.NF[i], fecha:yyyymmdd_a_iso(D.F[i]), fsort:D.F[i] }); }
+  const kf={dep:r=>r.dep, mun:r=>r.mun, area:r=>r.area, conf:r=>r.conf, nf:r=>r.nf, fecha:r=>r.fsort};
+  const s=E.evSort, dir=E.evDir, get=kf[s]||kf.area;
+  rows.sort((a,b)=>{ const va=get(a), vb=get(b); return typeof va==='string'? dir*va.localeCompare(vb,'es') : dir*(va-vb); });
+  rows=rows.slice(0,300);
+  const cols=[['dep','Departamento',false],['mun','Municipio',false],['area','Área (ha)',true],
+    ['conf','Confianza',true],['nf','N° focos',true],['fecha','Inicio',true]];
+  const fl=k=> s===k ? ` <span style="opacity:.6;font-size:10px">${dir<0?'▼':'▲'}</span>`:'';
+  const thead=cols.map(([k,lbl,num])=>`<th data-k="${k}" class="${num?'num':''}" style="cursor:pointer;user-select:none">${lbl}${fl(k)}</th>`).join('');
+  t.innerHTML=`<thead><tr>${thead}</tr></thead><tbody>`
+    + rows.map(r=>`<tr><td>${r.dep}</td><td>${r.mun}</td>`
+      +`<td class="num">${fmt1(r.area)}</td><td class="num">${r.conf.toFixed(1)}</td>`
+      +`<td class="num">${fmt(r.nf)}</td><td class="num">${r.fecha}</td></tr>`).join('')
     + `</tbody>`;
+  t.querySelectorAll('thead th').forEach(h=>h.onclick=()=>{ const k=h.dataset.k;
+    if(E.evSort===k) E.evDir*=-1; else{ E.evSort=k; E.evDir=(k==='dep'||k==='mun')?1:-1; }
+    pintarTabla(); });
 }
 function descargarCSV(){
   const filas=[];
@@ -1490,7 +1506,7 @@ async function generarPDF(){
       headStyles:{fillColor:AZUL,textColor:255,fontSize:8,halign:'center'},
       alternateRowStyles:{fillColor:[244,246,247]} }); y=doc.lastAutoTable.finalY+6; };
     const tablaDOM=(sel,maxRows)=>{ const t=$(sel); if(!t) return null;
-      const head=[[...t.querySelectorAll('thead th')].map(e=>e.textContent)];
+      const head=[[...t.querySelectorAll('thead th')].map(e=>e.textContent.replace(/[▲▼]/g,'').trim())];
       let body=[...t.querySelectorAll('tbody tr')].map(tr=>[...tr.children].map(td=>td.textContent));
       if(maxRows) body=body.slice(0,maxRows); return {head,body}; };
 
