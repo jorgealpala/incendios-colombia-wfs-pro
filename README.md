@@ -26,6 +26,23 @@ Todo el procesamiento ocurre **en el navegador**: no hay backend ni base de dato
 - **Filtros**: rango de fechas, año, nivel de confianza (chips).
 - **Reporte PDF** institucional estructurado (según el nivel y filtros en pantalla) y **descarga CSV** de la tabla.
 
+### Valor agregado (versión *pro*)
+
+Vistas adicionales para el monitoreo y la priorización, no presentes en el dashboard Streamlit:
+
+- **Monitoreo reciente**: alerta de **anomalía** (mes actual vs. promedio histórico del mismo mes)
+  y **tendencia reciente** (aceleración de los últimos 7/30 días vs. periodo previo) con *sparkline* de 90 días.
+- **Afectación por territorio**: **treemap** (ECharts) por departamento/municipio y **registro de
+  municipios** (tabla ordenable/buscable) con área quemada, densidad, % de área y % confianza alta.
+- **Territorio seleccionado** (*gauge*): % del área del depto/municipio con incendios.
+- **Serie mensual continua** con media móvil de 6 meses y **calendario de actividad** (heatmap anual).
+- **Índice de priorización para vigilancia**: puntaje 0–100 por municipio (recurrencia, actividad
+  reciente, magnitud y densidad), clasificado en Alta/Media/Baja.
+- **Mapa base satelital** (Esri World Imagery) además de Light Gray / OpenStreetMap.
+
+> Todas estas vistas se integran también en el **reporte PDF**. Sus fórmulas están en
+> [`METODOLOGIA.md`](METODOLOGIA.md).
+
 ---
 
 ## Estructura
@@ -52,7 +69,7 @@ incendios-colombia-wfs-pro/
 
 ### Tecnologías (CDN, sin build de JS)
 Leaflet 1.9 (+heat, +markercluster) · Chart.js 4 · **ECharts 5** (treemap, gauge, calendario) · **hyparquet** (lee Parquet en el navegador) ·
-jsPDF + html2canvas (PDF) · tiles base **Esri World Light Gray** / OpenStreetMap.
+jsPDF + html2canvas (PDF) · tiles base **Esri World Light Gray** / OpenStreetMap / **Esri World Imagery** (satelital).
 
 ---
 
@@ -85,13 +102,19 @@ Columnas del parquet ligero (`incendios_web.parquet`):
    `markerCluster` según el nivel; tiles Esri Light Gray.
 4. **Gráficas (Chart.js)**: se reconstruyen con los agregados en cada actualización.
 5. **Reporte PDF** (`generarPDF()`): reporte institucional **A4 vertical, estructurado y nativo**,
-   con el mismo estilo del informe del proyecto Streamlit (`reporte.py`):
+   con el mismo estilo del informe del proyecto Streamlit (`reporte.py`). Refleja el **nivel y los
+   filtros en pantalla** e incluye **todas las vistas de valor agregado**:
    - Encabezado (logo UNGRD + título), bloque de metadatos (Ámbito / Periodo / Generado) y
      **tabla de KPIs**, dibujados como **texto y tablas nativas** (jsPDF + `jspdf-autotable`) → nítidos.
-   - Secciones con títulos: **Mapa**, **Análisis**, **Comparativo por año**, **Tops**,
-     **Gestión del riesgo**, **Principales eventos** y **Términos de uso**.
-   - Las **gráficas** se insertan como imagen desde el propio Chart.js (compuestas sobre blanco);
-     el **mapa** y el **heatmap** vía `html2canvas`. La tabla de eventos se limita a 20 filas.
+   - Secciones con títulos: **Monitoreo reciente** (anomalía + tendencia reciente con *sparkline*,
+     y *gauge* del territorio en nivel Dep./Mun.), **Mapa**, **Afectación por territorio**
+     (treemap + registro de municipios), **Análisis** (confianza, mes comparativo, serie mensual
+     continua, día), **Comparativo por año**, **Calendario de actividad**, **Tops**,
+     **Gestión del riesgo** (recurrencia, estacionalidad, reincidentes, distribución mensual e
+     **índice de priorización**), **Tabla de eventos** y **Términos de uso**.
+   - Las **gráficas Chart.js** se insertan como imagen desde el propio Chart.js (compuestas sobre
+     blanco); las vistas **ECharts** (treemap, gauge, calendario) se exportan nítidas con
+     `getDataURL`; el **mapa** y el **heatmap** vía `html2canvas`. La tabla de eventos se limita a 20 filas.
    - Antes de capturar se fuerza el dibujado síncrono de las gráficas (`chart.draw()`) para que
      ninguna salga en blanco aunque la pestaña no esté activa.
 

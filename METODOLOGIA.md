@@ -257,8 +257,32 @@ La tabla se ordena por puntaje descendente; clic en una fila navega al municipio
 ## 12. Reporte PDF
 
 Reporte institucional A4 vertical generado en el navegador (jsPDF + autotable): usa los
-mismos valores calculados arriba (KPIs, mapa, gráficas, tablas de riesgo y tabla de
-eventos). Las gráficas se insertan como imagen; las tablas y textos son nativos.
+**mismos valores calculados arriba** (no recalcula nada) y refleja el nivel y los filtros
+activos en pantalla. Las tablas y textos son **nativos** (nítidos y seleccionables); las
+gráficas se insertan como **imagen**.
+
+Estructura (según el ámbito):
+
+| Sección | Fuente | §|
+|---|---|---|
+| Encabezado + KPIs | KPIs | 2 |
+| Monitoreo reciente | alerta de anomalía + tendencia reciente (*sparkline*); *gauge* solo en Dep./Mun. | 7, 7.1, 6 |
+| Mapa | coropleta del nivel activo | 3 |
+| Afectación por territorio | treemap + registro de municipios | 5 |
+| Análisis | confianza, mes comparativo, serie mensual continua, día | 8.1–8.3 |
+| Comparativo por año | donas + barras con variación % | 8.4 |
+| Calendario de actividad | heatmap anual (P98) | 9 |
+| Tops | top departamentos/municipios | — |
+| Gestión del riesgo | recurrencia, estacionalidad, reincidentes, distribución mensual, **índice de priorización** | 10, 11 |
+| Tabla de eventos | hasta 20 filas | 1 |
+| Términos de uso | — | — |
+
+**Captura de imágenes**:
+- Gráficas **Chart.js** → `chart.toBase64Image()` compuesto sobre blanco (evita fondo negro);
+  se fuerza `chart.draw()` síncrono para que ninguna salga en blanco aunque la pestaña no esté activa.
+- Vistas **ECharts** (treemap, *gauge*, calendario) → `getDataURL({pixelRatio:2, backgroundColor:'#fff'})`,
+  exportación nativa (no `html2canvas`) → nítidas.
+- **Mapa** y bloques HTML (alerta, panel de tendencia) → `html2canvas`.
 
 ---
 
