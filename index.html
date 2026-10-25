@@ -416,12 +416,15 @@ footer ul{margin:6px 0;padding-left:18px}
         </div>
         <div>
           <b>Fuentes y créditos:</b> Datos: OroraTech WildFire Solution (WFS) · Límites: DIVIPOLA – DANE.<br>
-          Desarrollado con Leaflet, Chart.js, hyparquet y jsPDF. Mapa base: Esri · OpenStreetMap.
+          Desarrollado con Leaflet, Chart.js, ECharts, hyparquet y jsPDF. Mapa base: Esri · OpenStreetMap.
         </div>
       </div>
       <div style="font-size:11.5px;color:#666;border-top:1px solid var(--linea);padding-top:8px">
         <b>Cómo citar:</b> Alpala, J. (2026). <i>Incendios Forestales – Colombia: GeoVisor de monitoreo y análisis
         de incendios con datos de WildFire Solution (OroraTech)</i>. UNGRD – Subdirección para el Conocimiento del Riesgo.
+      </div>
+      <div id="visitasPie" style="font-size:11.5px;color:#666;margin-top:8px;display:none">
+        👁 Visitas totales: <b id="contadorVisitas">—</b>
       </div>
     </footer>
   </main>
@@ -1729,6 +1732,58 @@ function construirControles(){
     $('#cargando-msg').textContent='Error al cargar: '+e.message;
     console.error(e);
   }
+})();
+</script>
+
+<!-- ================= CONTADOR DE VISITAS (Firebase Firestore) =================
+  Cuenta el TOTAL de visitas: suma 1 en cada carga de la página.
+  Funciona SOLO con el sitio publicado (no cuenta en localhost) y requiere un
+  proyecto Firebase gratuito. Pasos:
+    1) console.firebase.google.com -> crear proyecto -> Firestore (modo producción).
+    2) Agregar una app web y copiar su firebaseConfig en FIREBASE_CONFIG (abajo).
+    3) Reglas de Firestore (solo permiten leer y sumar de a 1):
+         rules_version = '2';
+         service cloud.firestore {
+           match /databases/{db}/documents {
+             match /contadores/visitas {
+               allow read: if true;
+               allow create: if request.resource.data.keys().hasOnly(['total'])
+                             && request.resource.data.total == 1;
+               allow update: if request.resource.data.keys().hasOnly(['total'])
+                             && request.resource.data.total == resource.data.total + 1;
+             }
+           }
+         }
+  Mientras FIREBASE_CONFIG conserve los valores "TU_...", el contador queda
+  desactivado y la página funciona igual (sin errores).
+-->
+<script type="module">
+const FIREBASE_CONFIG = {
+  apiKey:     "TU_API_KEY",
+  authDomain: "TU_PROYECTO.firebaseapp.com",
+  projectId:  "TU_PROYECTO",
+  appId:      "TU_APP_ID"
+};
+const ES_LOCAL = ['localhost','127.0.0.1',''].includes(location.hostname) || location.protocol==='file:';
+const CONFIGURADO = !Object.values(FIREBASE_CONFIG).some(v => String(v).startsWith('TU_'));
+(async () => {
+  if(!CONFIGURADO || ES_LOCAL) return;
+  try{
+    const { initializeApp } = await import('https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js');
+    const { getFirestore, doc, runTransaction } = await import('https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js');
+    const db  = getFirestore(initializeApp(FIREBASE_CONFIG));
+    const ref = doc(db, 'contadores', 'visitas');
+    const total = await runTransaction(db, async tx => {
+      const snap = await tx.get(ref);
+      const n = (snap.exists() ? (snap.data().total || 0) : 0) + 1;
+      tx.set(ref, { total: n }, { merge: true });
+      return n;
+    });
+    const el = document.getElementById('contadorVisitas');
+    const box = document.getElementById('visitasPie');
+    if(el)  el.textContent = total.toLocaleString('es-CO');
+    if(box) box.style.display = '';
+  }catch(e){ console.warn('Contador de visitas no disponible:', e.message); }
 })();
 </script>
 </body>

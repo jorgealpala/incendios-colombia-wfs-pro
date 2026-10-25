@@ -69,7 +69,7 @@ incendios-colombia-wfs-pro/
 
 ### Tecnologías (CDN, sin build de JS)
 Leaflet 1.9 (+heat, +markercluster) · Chart.js 4 · **ECharts 5** (treemap, gauge, calendario) · **hyparquet** (lee Parquet en el navegador) ·
-jsPDF + html2canvas (PDF) · tiles base **Esri World Light Gray** / OpenStreetMap / **Esri World Imagery** (satelital).
+jsPDF + html2canvas (PDF) · **Firebase Firestore** (contador de visitas) · tiles base **Esri World Light Gray** / OpenStreetMap / **Esri World Imagery** (satelital).
 
 ---
 
@@ -151,6 +151,38 @@ python -m http.server 8000
 3. La app queda en `https://<usuario>.github.io/<repo>/`.
 
 > El `.nojekyll` evita que GitHub Pages procese el sitio con Jekyll.
+
+### Contador de visitas (Firebase Firestore)
+
+El pie muestra el **total de visitas** (suma 1 en cada carga). Como GitHub Pages es
+estático, el conteo se guarda en **Firebase Firestore** (capa gratuita). Cuenta **solo en
+el sitio publicado** (no en `localhost`) y, mientras no se configure, queda desactivado sin
+afectar la página. Para activarlo:
+
+1. En [console.firebase.google.com](https://console.firebase.google.com) crea un proyecto y
+   habilita **Firestore Database** (modo producción).
+2. Agrega una **app web** y copia su `firebaseConfig` en la constante `FIREBASE_CONFIG`
+   del bloque *"CONTADOR DE VISITAS"* al final de `index.html` (reemplaza los valores `TU_...`).
+3. Pega estas **reglas** en Firestore (solo permiten leer y **sumar de a 1**):
+
+   ```
+   rules_version = '2';
+   service cloud.firestore {
+     match /databases/{db}/documents {
+       match /contadores/visitas {
+         allow read: if true;
+         allow create: if request.resource.data.keys().hasOnly(['total'])
+                       && request.resource.data.total == 1;
+         allow update: if request.resource.data.keys().hasOnly(['total'])
+                       && request.resource.data.total == resource.data.total + 1;
+       }
+     }
+   }
+   ```
+
+El documento `contadores/visitas` se crea solo en la primera visita. La `firebaseConfig` es
+pública por diseño (no es un secreto); la seguridad la dan las reglas. Es un conteo simple,
+sin datos personales. *(Nota: cuenta cada carga, por lo que recargas y rastreadores también suman.)*
 
 ---
 
