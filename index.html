@@ -53,6 +53,14 @@ table.reg tr.sel td{background:#eef3f8}
 .map-lbl-mun{font-size:10px;font-weight:600;color:#3a4654;white-space:nowrap;
   text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff;transform:translate(-50%,-50%);
   pointer-events:none;opacity:.88}
+/* Recuadro (inset) de San Andrés y Providencia, ampliado sobre el mapa nacional */
+.inset-sa{background:#fff;border:1px solid var(--linea);border-radius:8px;
+  box-shadow:0 1px 5px rgba(0,0,0,.18);padding:4px 6px 5px;width:116px;cursor:pointer;
+  font-family:inherit}
+.inset-sa .t{font-size:10px;font-weight:700;color:#2c3e50;text-align:center;
+  margin-bottom:1px;letter-spacing:.02em}
+.inset-sa svg{display:block;width:100%;height:auto}
+.inset-sa .v{font-size:9px;color:#666;text-align:center;margin-top:1px}
 .tend-tiles{display:flex;gap:20px;flex-wrap:wrap}
 .tend-tile{min-width:118px}
 .tend-tile .tt-lbl{font-size:11px;color:var(--gris)}
@@ -1044,6 +1052,7 @@ function actualizarMapa(){
   if(E.nivel==='Nacional') mapaNacional();
   else if(E.nivel==='Departamental') mapaDepartamental();
   else mapaMunicipal();
+  if(E.nivel!=='Nacional') ocultarInsetSanAndres();
 }
 function mapaNacional(){
   const cnt=conteoPorDepto();
@@ -1061,6 +1070,7 @@ function mapaNacional(){
   mapa.setView([4.6,-74.1],5.3);
   pintarEtiquetasDep();
   leyendaChoro(cortes,usaBins);
+  renderInsetSanAndres(cnt,cortes,usaBins);
 }
 // Etiquetas de departamento con anti-solapamiento: prioriza los más grandes
 // (por área) y omite los que chocarían a la escala actual; al hacer zoom
@@ -1086,7 +1096,8 @@ function pintarEtiquetas(features, nombreFn, areaFn, cls){
   capaLabels.addTo(mapa);
 }
 function pintarEtiquetasDep(){ if(!mapa||!gjDep||E.nivel!=='Nacional') return;
-  pintarEtiquetas(gjDep.features.filter(f=>Number(f.properties.DeCodigo)!==0),
+  // Excluye San Andrés (88): su etiqueta va en el recuadro ampliado, no flotando en el mar.
+  pintarEtiquetas(gjDep.features.filter(f=>{const c=Number(f.properties.DeCodigo); return c!==0 && c!==88;}),
     f=>f.properties.DeNombre, f=>AREAS.depto[String(Number(f.properties.DeCodigo))], 'map-lbl-dep'); }
 function pintarEtiquetasMuni(){ if(!mapa||E.nivel!=='Departamental') return;
   pintarEtiquetas(munsPorDep.get(E.depto)||[],
@@ -1104,6 +1115,45 @@ function leyendaChoro(cortes,usaBins){
   const nomMet={'Cortes naturales (Jenks)':'cortes naturales (Jenks)','Rangos técnicos (alerta)':'rangos técnicos de alerta','Cuantiles':'cuantiles'}[E.metodo];
   cont.innerHTML=`<b>Número total de eventos registrados</b> · ${nomMet}<br>${items}`;
 }
+// --- Recuadro (inset) de San Andrés y Providencia ampliado ---
+// El archipiélago (cód. 88) es diminuto a escala nacional; se dibuja ampliado en un
+// recuadro propio (SVG), con el MISMO color de la coropleta y clic para abrir el depto.
+let insetCtrl=null;
+function featSanAndres(){ return gjDep && gjDep.features.find(f=>Number(f.properties.DeCodigo)===88); }
+function renderInsetSanAndres(cnt,cortes,usaBins){
+  const ft=featSanAndres(); if(!ft||!mapa) return;
+  const v=cnt.get(88)||0;
+  const fill = usaBins?colorDe(v,cortes):'#fed976';
+  const g=ft.geometry, polys = g.type==='Polygon'?[g.coordinates]:g.coordinates;
+  // corrección de longitud por latitud media (proyección equirectangular, norte arriba)
+  let latSum=0,np=0; polys.forEach(p=>p.forEach(r=>r.forEach(c=>{latSum+=c[1];np++;})));
+  const k=Math.cos(latSum/np*Math.PI/180);
+  const rings=[]; let minX=1e9,maxX=-1e9,minY=1e9,maxY=-1e9;
+  polys.forEach(poly=>poly.forEach(ring=>{
+    const pr=ring.map(c=>{ const x=c[0]*k, y=-c[1];
+      if(x<minX)minX=x; if(x>maxX)maxX=x; if(y<minY)minY=y; if(y>maxY)maxY=y; return [x,y]; });
+    rings.push(pr); }));
+  const W=108,H=132,m=9, pw=(maxX-minX)||1, ph=(maxY-minY)||1;
+  const s=Math.min((W-2*m)/pw,(H-2*m)/ph), ox=(W-pw*s)/2, oy=(H-ph*s)/2;
+  const tx=x=>((x-minX)*s+ox).toFixed(1), ty=y=>((y-minY)*s+oy).toFixed(1);
+  const d=rings.map(r=>'M'+r.map(p=>tx(p[0])+','+ty(p[1])).join('L')+'Z').join(' ');
+  const svg=`<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">`+
+    `<path d="${d}" fill="${fill}" stroke="#7a8699" stroke-width="1" stroke-linejoin="round"`+
+    ` vector-effect="non-scaling-stroke"/></svg>`;
+  if(!insetCtrl){
+    insetCtrl=L.control({position:'topleft'});
+    insetCtrl.onAdd=function(){ const el=L.DomUtil.create('div','inset-sa');
+      L.DomEvent.disableClickPropagation(el);
+      el.addEventListener('click',()=>{ if(nomDep.has(88)) irADepto(88); });
+      return el; };
+    insetCtrl.addTo(mapa);
+    if(mapa.zoomControl) mapa.zoomControl.setPosition('topleft'); // zoom debajo del recuadro
+  }
+  const el=insetCtrl.getContainer();
+  el.style.display=''; el.title='San Andrés, Providencia y Santa Catalina — clic para ver';
+  el.innerHTML=`<div class="t">San Andrés</div>${svg}<div class="v">${fmt(v)} eventos</div>`;
+}
+function ocultarInsetSanAndres(){ const el=insetCtrl&&insetCtrl.getContainer(); if(el) el.style.display='none'; }
 function puntosFiltrados(){ const pts=[];
   for(let i=0;i<D.n;i++){ if(maskBase[i]&&geoOK(i)) pts.push(i); } return pts; }
 function mapaDepartamental(){
