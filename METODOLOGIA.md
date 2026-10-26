@@ -286,6 +286,153 @@ Estructura (según el ámbito):
 
 ---
 
+## 13. Capa de puntos (nivel municipal), tooltip y descarga CSV
+
+### 13.1 Puntos del mapa (incendios individuales)
+En **nivel municipal**, cada evento filtrado (`maskBase ∧ geoOK`) se dibuja como un
+`L.circleMarker` en `[lat, lon]`:
+
+| Propiedad | Regla |
+|---|---|
+| Radio (px) | `r = 4 + √area / 4`, acotado a un **máximo de 18 px** (magnitud ∝ √área → el *área del círculo* es ∝ al área quemada) |
+| Color | por nivel de confianza (`COLOR_CONF`: gris→verde→amarillo→naranja→rojo→rojo oscuro) |
+| Opacidad | relleno 0.7 |
+
+Tres visualizaciones: **agrupados** (markercluster), **sueltos** y **mapa de calor**.
+El lienzo del mapa de calor se marca con `pointerEvents='none'` para que el clic
+llegue siempre a los puntos (el mapa usa `preferCanvas:true`).
+
+**Tooltip del punto** (al pasar/hacer clic), con este contenido exacto:
+
+```
+Fecha: AAAA-MM-DD · Confianza: c · Área: a ha · Focos: nf · Lat: yy.yyyyy, Lon: xx.xxxxx
+```
+
+- `Fecha` = fecha del evento en ISO (`AAAA-MM-DD`), misma que el CSV.
+- `Confianza` = `conf/10` con 1 decimal (0.0–1.0).
+- `Área` = hectáreas con 1 decimal · `Focos` = `num_fires`.
+- `Lat`/`Lon` = coordenadas del centroide con **5 decimales** (≈ 1 m).
+
+### 13.2 Descarga CSV
+El botón *"Descargar tabla (CSV)"* exporta **todos** los eventos del ámbito actual
+(`maskBase ∧ geoOK`, en **cualquier nivel**: Nacional, Departamental o Municipal),
+ordenados por **área descendente**. Codificación UTF-8. Columnas:
+
+```
+departamento,municipio,lat,lon,area,confidence,num_fires,fecha
+```
+
+- `lat`,`lon` → 5 decimales · `area` → 2 decimales · `confidence` → 1 decimal · `fecha` → ISO.
+- `departamento`/`municipio` se resuelven de los códigos DIVIPOLA a nombre; van entre comillas.
+
+---
+
+## 14. Contador de visitas (Firebase Firestore)
+
+### 14.1 Por qué un servicio externo
+GitHub Pages sirve **solo archivos estáticos**: no hay dónde guardar un número
+**compartido** entre todos los visitantes. `localStorage` solo contaría las visitas de
+*ese* navegador. Por eso el conteo se delega a **Cloud Firestore** (base NoSQL de
+documentos, de Firebase), que persiste el total y lo incrementa de forma atómica en el
+servidor. Es el **único** componente del visor con backend; no interviene en el análisis
+de incendios.
+
+### 14.2 Modelo de datos
+Un único documento:
+
+```
+contadores/visitas  →  { total: <entero> }
+```
+
+`total` es el número acumulado de visitas. El documento se **crea en la primera visita**
+(cuando aún no existe, se parte de 0 y se escribe 1).
+
+### 14.3 SDK y carga
+Se usa el **SDK modular de Firebase v10.14.1**, cargado por **CDN** con `import()`
+dinámico (sin `npm`, sin paso de build):
+
+```
+https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js        → initializeApp
+https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js  → getFirestore, doc, runTransaction
+```
+
+### 14.4 Flujo de conteo (en cada carga de la página)
+```
+1. Verificar guardas (14.6). Si no pasa → no cuenta.
+2. db  = getFirestore(initializeApp(FIREBASE_CONFIG))
+3. ref = doc(db, 'contadores', 'visitas')
+4. total = runTransaction(db, tx => {
+       snap = tx.get(ref)
+       n    = (snap existe ? snap.total : 0) + 1
+       tx.set(ref, { total: n }, { merge: true })
+       return n
+   })
+5. Mostrar en el pie: "👁 Visitas totales: N"  (N con formato es-CO, miles con punto)
+```
+
+**¿Por qué una transacción?** `runTransaction` hace un **lee–modifica–escribe atómico**
+con reintentos automáticos si dos visitas coinciden: así **no se pierden** incrementos y,
+además, **devuelve el valor ya confirmado** para mostrarlo. (Una alternativa,
+`increment(1)`, también es atómica pero obligaría a una segunda lectura para mostrar el
+número y podría “saltarse” valores entre visitas simultáneas.)
+
+### 14.5 Semántica del conteo
+Es un **total de visitas**: suma **1 en cada carga** de la página. **No** hay
+deduplicación por sesión ni por navegador, por lo que **recargas y rastreadores también
+suman**. No se guarda ningún dato personal, solo un entero.
+
+### 14.6 Guardas (cuándo NO cuenta)
+El módulo se auto-desactiva, sin error, en dos casos:
+
+| Guarda | Condición | Motivo |
+|---|---|---|
+| `ES_LOCAL` | `hostname ∈ {localhost, 127.0.0.1, ''}` o `protocol = file:` | no inflar el contador en desarrollo |
+| `CONFIGURADO` | algún valor de `FIREBASE_CONFIG` empieza por `"TU_"` | aún sin configurar → la página funciona igual |
+
+### 14.7 Aislamiento y robustez
+El contador vive en su **propio `<script type="module">`**, separado del visor. Todo va
+dentro de `try/catch`: si el CDN de Firebase o la red fallan, solo se registra un
+`console.warn` y **el visor no se ve afectado**. La línea del pie permanece oculta
+(`display:none`) hasta que llega un valor.
+
+### 14.8 Modelo de seguridad
+- La `firebaseConfig` (incl. `apiKey`) es **pública por diseño**: identifica el proyecto,
+  **no es un secreto** ni credencial. Es correcto publicarla en el repositorio.
+- La seguridad real la dan las **reglas de Firestore**, que restringen el documento a:
+  - **lectura** pública;
+  - **create** solo si el documento es exactamente `{ total: 1 }`;
+  - **update** solo si `total` nuevo = `total` anterior **+ 1** y el único campo es `total`
+    (`hasOnly(['total'])`).
+  ```
+  rules_version = '2';
+  service cloud.firestore {
+    match /databases/{database}/documents {
+      match /contadores/visitas {
+        allow read: if true;
+        allow create: if request.resource.data.keys().hasOnly(['total'])
+                      && request.resource.data.total == 1;
+        allow update: if request.resource.data.keys().hasOnly(['total'])
+                      && request.resource.data.total == resource.data.total + 1;
+      }
+    }
+  }
+  ```
+- Así **nadie** puede fijar un valor arbitrario, borrar el documento ni añadir campos; a lo
+  sumo, sumar 1 por escritura.
+- **Limitación residual**: un cliente podría hacer *scripting* de muchos `+1` para inflar el
+  número (inherente a cualquier contador de navegador sin autenticación). Es aceptable para
+  un contador de visitas.
+- **Reiniciar**: solo manualmente en la consola de Firebase (las reglas impiden fijar el
+  valor desde la web). *Firestore Database → Datos → `contadores/visitas` → editar `total`.*
+
+### 14.9 Configuración y costo
+- La `FIREBASE_CONFIG` se edita en el bloque *"CONTADOR DE VISITAS"* al final de
+  `index.html` (campos `apiKey`, `authDomain`, `projectId`, `appId`).
+- Proyecto en **plan Spark (gratuito)**; la cuota libre de Firestore (lecturas/escrituras
+  por día) es amplia para este tráfico. No requiere copias de seguridad (solo plan Blaze).
+
+---
+
 *Cualquier cambio de pesos, umbrales o ventanas se hace en `index.html`
-(`PESOS_PRIOR`, `RANGOS_TECNICOS`, ventanas de medias móviles, etc.) o en
+(`PESOS_PRIOR`, `RANGOS_TECNICOS`, ventanas de medias móviles, `FIREBASE_CONFIG`, etc.) o en
 `generar_datos.py` (áreas, normalización de confianza).*

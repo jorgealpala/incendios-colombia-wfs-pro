@@ -6,7 +6,9 @@ Visor **100 % estático en HTML/JS** de incendios forestales en Colombia, con da
 misma información y análisis, pero servida como sitio estático (GitHub Pages) para
 **eliminar los límites de consultas** del Community Cloud.
 
-Todo el procesamiento ocurre **en el navegador**: no hay backend ni base de datos.
+Todo el procesamiento de datos ocurre **en el navegador**: no hay backend para los incendios.
+El único servicio externo es un pequeño **contador de visitas** (Firebase Firestore), que no
+interviene en el análisis.
 
 ---
 
@@ -39,9 +41,16 @@ Vistas adicionales para el monitoreo y la priorización, no presentes en el dash
 - **Índice de priorización para vigilancia**: puntaje 0–100 por municipio (recurrencia, actividad
   reciente, magnitud y densidad), clasificado en Alta/Media/Baja.
 - **Mapa base satelital** (Esri World Imagery) además de Light Gray / OpenStreetMap.
+- **Detalle del incendio en el mapa** (nivel municipal): al pasar/hacer clic sobre un punto, el
+  tooltip muestra **fecha, confianza, área, focos y coordenadas (lat/lon)**.
+- **Tabla ordenable** por cualquier columna (asc/desc) y **descarga CSV** que incluye las
+  **coordenadas (lat, lon)** de cada incendio.
+- **Contador de visitas** (total) en el pie, con **Firebase Firestore** (ver abajo).
 
-> Todas estas vistas se integran también en el **reporte PDF**. Sus fórmulas están en
-> [`METODOLOGIA.md`](METODOLOGIA.md).
+> Todas estas vistas se integran también en el **reporte PDF**. Sus fórmulas y detalles de
+> implementación están en [`METODOLOGIA.md`](METODOLOGIA.md).
+
+**En producción:** <https://jorgealpala.github.io/incendios-colombia-wfs-pro/>
 
 ---
 
@@ -146,29 +155,37 @@ python -m http.server 8000
 
 ## Publicar (GitHub Pages)
 
+**Estado:** publicado y funcional en
+<https://jorgealpala.github.io/incendios-colombia-wfs-pro/>.
+
+Pasos (reproducibles):
+
 1. Subir el repositorio a GitHub.
 2. *Settings → Pages →* servir desde la rama `main` (raíz `/`).
 3. La app queda en `https://<usuario>.github.io/<repo>/`.
 
 > El `.nojekyll` evita que GitHub Pages procese el sitio con Jekyll.
 
-### Contador de visitas (Firebase Firestore)
+### Contador de visitas (Firebase Firestore) — **activo**
 
 El pie muestra el **total de visitas** (suma 1 en cada carga). Como GitHub Pages es
-estático, el conteo se guarda en **Firebase Firestore** (capa gratuita). Cuenta **solo en
-el sitio publicado** (no en `localhost`) y, mientras no se configure, queda desactivado sin
-afectar la página. Para activarlo:
+estático, el conteo se guarda en **Firebase Firestore** (plan Spark, gratuito). Cuenta
+**solo en el sitio publicado** (no en `localhost`). El proyecto Firebase
+`incendios-colombia-wfs-pro` ya está configurado en `index.html` y verificado en producción.
 
-1. En [console.firebase.google.com](https://console.firebase.google.com) crea un proyecto y
-   habilita **Firestore Database** (modo producción).
-2. Agrega una **app web** y copia su `firebaseConfig` en la constante `FIREBASE_CONFIG`
-   del bloque *"CONTADOR DE VISITAS"* al final de `index.html` (reemplaza los valores `TU_...`).
-3. Pega estas **reglas** en Firestore (solo permiten leer y **sumar de a 1**):
+La metodología completa (arquitectura, transacción atómica, modelo de seguridad y matices)
+está en **[`METODOLOGIA.md` §14](METODOLOGIA.md)**. Resumen de cómo se activó:
+
+1. En [console.firebase.google.com](https://console.firebase.google.com) → **Crear proyecto**
+   (plan Spark) → **Firestore Database** en **modo producción** (base `(default)`, edición Standard).
+2. **Agregar app web** (`</>`, sin Hosting) → copiar el `firebaseConfig` en la constante
+   `FIREBASE_CONFIG` del bloque *"CONTADOR DE VISITAS"* al final de `index.html`.
+3. En **Firestore → Reglas** pegar y **publicar** las reglas (solo permiten leer y **sumar de a 1**):
 
    ```
    rules_version = '2';
    service cloud.firestore {
-     match /databases/{db}/documents {
+     match /databases/{database}/documents {
        match /contadores/visitas {
          allow read: if true;
          allow create: if request.resource.data.keys().hasOnly(['total'])
@@ -181,8 +198,12 @@ afectar la página. Para activarlo:
    ```
 
 El documento `contadores/visitas` se crea solo en la primera visita. La `firebaseConfig` es
-pública por diseño (no es un secreto); la seguridad la dan las reglas. Es un conteo simple,
-sin datos personales. *(Nota: cuenta cada carga, por lo que recargas y rastreadores también suman.)*
+**pública por diseño** (identifica el proyecto, no es un secreto); la seguridad la dan las
+reglas. Es un conteo simple, sin datos personales.
+
+- **Reiniciar el contador**: editar el campo `total` del documento `contadores/visitas` en la
+  consola de Firebase (las reglas no permiten fijar un valor desde la web, solo `+1`).
+- *Cuenta cada carga, por lo que recargas y rastreadores también suman.*
 
 ---
 
